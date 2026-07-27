@@ -414,10 +414,11 @@ async function runLivenessLoop(video) {
       console.log("EAR: " + averageEAR);
 
       // Deteksi mata tertutup (kedipan)
-      // Nilai normal mata terbuka: 0.26 - 0.35, tertutup: < 0.21
-      if (averageEAR < 0.21) {
+      // Nilai normal mata terbuka: 0.26 - 0.35, tertutup pada mobile camera: < 0.235
+      if (averageEAR < 0.235) {
         isBlinked = true; // Terdeteksi menutup mata
-      } else if (isBlinked && averageEAR > 0.25) {
+        challengeText.innerText = "Kedipan terdeteksi! Buka mata Anda...";
+      } else if (isBlinked && averageEAR > 0.245) {
         // Mata kembali terbuka setelah menutup = 1 Kedipan Sukses!
         blinkCount++;
         isBlinked = false;
@@ -439,8 +440,8 @@ async function runLivenessLoop(video) {
     challengeText.innerText = "Dekatkan wajah Anda ke kamera";
   }
 
-  // Ulangi deteksi dalam ~100ms
-  setTimeout(() => runLivenessLoop(video), 100);
+  // Ulangi deteksi dalam 50ms untuk sampling kedipan cepat yang lebih sensitif
+  setTimeout(() => runLivenessLoop(video), 50);
 }
 
 /**
@@ -542,17 +543,36 @@ async function sendToGAS(payload) {
     if (challengeText) challengeText.innerText = "📤 Mengirim absensi ke server...";
     showScanResult("Mengirim data ke server Google Sheets...", "success");
 
-    await fetch(GAS_URL, {
+    // Kirim POST tanpa no-cors untuk membaca balasan JSON resmi dari Google Apps Script
+    const response = await fetch(GAS_URL, {
       method: "POST",
-      mode: "no-cors",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "text/plain;charset=utf-8"
       },
       body: JSON.stringify(payload)
     });
 
+    let resData = null;
+    try {
+      resData = await response.json();
+    } catch(e) {
+      console.log("Membaca respon JSON standar dari GAS:", e);
+    }
+
+    if (resData && resData.status === "error") {
+      console.warn("GAS menolak absensi:", resData.message);
+      if (challengeText) challengeText.innerText = "❌ Gagal: " + resData.message;
+      showScanResult("❌ Ditolak Server: " + resData.message, "error");
+      setTimeout(() => {
+        resetToScanStep1();
+        startQRScanner();
+      }, 5000);
+      return;
+    }
+
     if (challengeText) challengeText.innerText = "✅ Absensi Berhasil!";
-    showScanResult("✅ Absensi sukses dikirim! Terima kasih, " + payload.nrp + ".", "success");
+    const successMsg = resData && resData.message ? resData.message : ("Absensi sukses dikirim! Terima kasih, " + payload.nrp + ".");
+    showScanResult("✅ " + successMsg, "success");
 
     setTimeout(() => {
       resetToScanStep1();
@@ -560,7 +580,7 @@ async function sendToGAS(payload) {
     }, 3500);
 
   } catch (error) {
-    console.error("Koneksi gagal mengirim ke GAS:", error);
+    console.error("Koneksi gagal/offline saat mengirim ke GAS:", error);
     enqueueOfflineRecord(payload);
   }
 }
