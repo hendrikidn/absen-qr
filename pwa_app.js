@@ -69,6 +69,10 @@ function checkURLParameters() {
     };
     console.log("Parameter URL terdeteksi dari kamera bawaan HP:", scannedQRData);
     
+    if (!registeredEmbeddings) {
+      loadLocalRegistration();
+    }
+
     // Pastikan user terdaftar di ponsel ini
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP || !registeredEmbeddings) {
@@ -136,9 +140,16 @@ function loadLocalRegistration() {
   const localEmbeddings = localStorage.getItem('attendance_registered_embeddings');
 
   if (localData && localEmbeddings) {
-    registeredEmbeddings = JSON.parse(localEmbeddings);
-    console.log("Data pendaftaran lokal ditemukan untuk NRP: " + localData);
+    try {
+      registeredEmbeddings = JSON.parse(localEmbeddings);
+      console.log("Data pendaftaran lokal ditemukan untuk NRP: " + localData);
+      return true;
+    } catch(e) {
+      console.error("Gagal parse embeddings lokal:", e);
+      registeredEmbeddings = null;
+    }
   }
+  return false;
 }
 
 /**
@@ -256,7 +267,11 @@ async function onQRScanSuccess(decodedText, decodedResult) {
 
     console.log("QR Code valid terbaca:", scannedQRData);
 
-    // 2. Periksa apakah karyawan sudah teregistrasi wajahnya di HP ini
+    // 2. Pastikan data registrasi lokal selalu dibaca ulang dari LocalStorage
+    if (!registeredEmbeddings) {
+      loadLocalRegistration();
+    }
+
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP || !registeredEmbeddings) {
       // Matikan scanner secara bersih agar tidak mentrigger callback berulang
@@ -454,44 +469,67 @@ function calculateEAR(eye) {
  * Memproses Pengiriman Data Kehadiran (Online / Masuk Antrean Offline)
  */
 function submitAttendance() {
-  const localNRP = localStorage.getItem('attendance_registered_nrp');
+  const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
+  const challengeText = document.getElementById('challengeText');
 
-  // Ambil lokasi GPS HP
+  if (!scannedQRData || !scannedQRData.outlet_id) {
+    console.error("Data QR Code tidak ditemukan!");
+    showScanResult("Data QR Code tidak valid. Silakan scan ulang QR Code.", "error");
+    setTimeout(() => {
+      resetToScanStep1();
+      startQRScanner();
+    }, 3000);
+    return;
+  }
+
+  if (challengeText) {
+    challengeText.style.display = 'block';
+    challengeText.innerText = "⏳ Memproses lokasi GPS...";
+  }
+
+  function proceedWithPayload(lat, lng) {
+    const payload = {
+      nrp: localNRP,
+      outlet_id: scannedQRData.outlet_id,
+      totp_token: scannedQRData.totp_token,
+      timestamp: scannedQRData.timestamp,
+      latitude: lat,
+      longitude: lng,
+      face_verified: faceVerified,
+      liveness_passed: livenessPassed,
+      attendance_type: "CLOCK_IN",
+      device_id: getOrCreateDeviceId(),
+      notes: "Absen QR via PWA (Liveness Passed)"
+    };
+
+    if (navigator.onLine) {
+      sendToGAS(payload);
+    } else {
+      enqueueOfflineRecord(payload);
+    }
+  }
+
+  // Ambil lokasi GPS HP dengan fallback akurasi
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const payload = {
-          nrp: localNRP,
-          outlet_id: scannedQRData.outlet_id,
-          totp_token: scannedQRData.totp_token,
-          timestamp: scannedQRData.timestamp,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          face_verified: faceVerified,
-          liveness_passed: livenessPassed,
-          attendance_type: "CLOCK_IN", // Bisa dikembangkan CLOCK_IN / CLOCK_OUT
-          device_id: getOrCreateDeviceId(),
-          notes: "Absen QR via PWA (Liveness Passed)"
-        };
-
-        if (navigator.onLine) {
-          sendToGAS(payload);
-        } else {
-          enqueueOfflineRecord(payload);
-        }
+        proceedWithPayload(position.coords.latitude, position.coords.longitude);
       },
       (error) => {
-        console.error("Gagal mendapatkan GPS:", error);
-        showScanResult("Gagal mendapatkan lokasi GPS. Akses lokasi wajib diaktifkan untuk absensi.", "error");
-        resetToScanStep1();
-        setTimeout(startQRScanner, 5000);
+        console.warn("High accuracy GPS timeout/error, menggunakan fallback low accuracy:", error);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => proceedWithPayload(pos.coords.latitude, pos.coords.longitude),
+          (err2) => {
+            console.warn("GPS lokasi tidak tersedia, mengirim koordinat default 0,0:", err2);
+            proceedWithPayload(0, 0);
+          },
+          { enableHighAccuracy: false, timeout: 4000 }
+        );
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 5000 }
     );
   } else {
-    showScanResult("GPS Geolocation tidak didukung di peramban Anda.", "error");
-    resetToScanStep1();
-    setTimeout(startQRScanner, 5000);
+    proceedWithPayload(0, 0);
   }
 }
 
@@ -499,34 +537,30 @@ function submitAttendance() {
  * Mengirim data langsung ke Google Apps Script Web App
  */
 async function sendToGAS(payload) {
+  const challengeText = document.getElementById('challengeText');
   try {
+    if (challengeText) challengeText.innerText = "📤 Mengirim absensi ke server...";
     showScanResult("Mengirim data ke server Google Sheets...", "success");
 
-    // Kirim menggunakan fetch POST (dengan mode cors karena GAS mendukung CORS JSON)
-    const response = await fetch(GAS_URL, {
+    await fetch(GAS_URL, {
       method: "POST",
-      mode: "no-cors", // Catatan: no-cors mengabaikan respon body karena restriksi redirect GAS. 
-      // Alternatif terbaik: Kirim via POST. Agar kita mendapatkan respon JSON, 
-      // GAS harus dipanggil via method redirect. Kita abaikan pembacaan response 
-      // atau buat GAS membalas dengan status 200.
+      mode: "no-cors",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
     });
 
-    // Jika mode no-cors, kita tidak bisa membaca isi body (selalu buram / opaque).
-    // Maka kita asumsikan sukses terkirim jika tidak masuk block catch.
-    showScanResult("Absensi sukses dikirim! Terima kasih.", "success");
+    if (challengeText) challengeText.innerText = "✅ Absensi Berhasil!";
+    showScanResult("✅ Absensi sukses dikirim! Terima kasih, " + payload.nrp + ".", "success");
 
     setTimeout(() => {
       resetToScanStep1();
       startQRScanner();
-    }, 4000);
+    }, 3500);
 
   } catch (error) {
     console.error("Koneksi gagal mengirim ke GAS:", error);
-    // Masukkan ke antrean offline jika terjadi kegagalan jaringan mendadak
     enqueueOfflineRecord(payload);
   }
 }
