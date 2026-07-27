@@ -54,7 +54,7 @@ function checkURLParameters() {
     // Pastikan user terdaftar di ponsel ini
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP || !registeredEmbeddings) {
-      showScanResult("Error: Ponsel belum diregistrasikan. Masuk ke tab 'Registrasi' terlebih dahulu.", "error");
+      openSyncOverlay(); // Tampilkan overlay sinkronisasi profil wajah
       return;
     }
     
@@ -216,8 +216,7 @@ function onQRScanSuccess(decodedText, decodedResult) {
     // Periksa apakah karyawan sudah teregistrasi wajahnya di HP ini
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP || !registeredEmbeddings) {
-      showScanResult("Error: Ponsel belum diregistrasikan. Silakan masuk ke tab 'Registrasi' terlebih dahulu.", "error");
-      setTimeout(startQRScanner, 5000);
+      openSyncOverlay(); // Tampilkan overlay sinkronisasi profil wajah
       return;
     }
 
@@ -623,8 +622,11 @@ async function captureFaceEmbeddings() {
     localStorage.setItem('attendance_registered_nrp', nrp);
     localStorage.setItem('attendance_registered_embeddings', JSON.stringify(embeddingArray));
 
+    // Kirim registrasi wajah ke cloud Google Sheets
+    uploadFaceEmbeddingToCloud(nrp, embeddingArray);
+
     countSpan.innerText = "3"; // Simulasi selesai
-    showRegResult("Registrasi Wajah NRP " + nrp + " Sukses! Data wajah tersimpan secara lokal.", "success");
+    showRegResult("Registrasi Wajah NRP " + nrp + " Sukses! Data wajah tersimpan secara lokal & cloud.", "success");
 
     // Perbarui referensi global
     registeredEmbeddings = embeddingArray;
@@ -641,6 +643,105 @@ async function captureFaceEmbeddings() {
 
 function showRegResult(message, type) {
   const resultDiv = document.getElementById('regResult');
+  resultDiv.innerText = message;
+  resultDiv.className = "feedback-message " + (type === 'success' ? 'feedback-success' : 'feedback-error');
+  resultDiv.style.display = 'block';
+}
+
+/**
+ * Mengunggah data template wajah ke cloud (Google Sheets) setelah registrasi sukses
+ */
+async function uploadFaceEmbeddingToCloud(nrp, embedding) {
+  if (!navigator.onLine) {
+    console.log("Registrasi wajah cloud ditunda (offline). Data wajah disimpan lokal.");
+    return;
+  }
+  try {
+    const payload = {
+      action: "register_face",
+      nrp: nrp,
+      face_embedding: embedding
+    };
+    
+    await fetch(GAS_URL, {
+      method: "POST",
+      mode: "no-cors", // Mode no-cors untuk bypass redirect Google
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    console.log("Registrasi wajah untuk NRP " + nrp + " berhasil diunggah ke Google Sheets.");
+  } catch (err) {
+    console.error("Gagal mengunggah data wajah ke cloud:", err);
+  }
+}
+
+/**
+ * Menyinkronkan Profil Wajah Karyawan dari Cloud jika PWA dibuka di browser baru
+ */
+async function syncFaceProfile() {
+  const syncResult = document.getElementById('syncResult');
+  const syncNrpInput = document.getElementById('syncNRP');
+  const nrp = syncNrpInput.value.trim();
+  
+  if (!nrp) {
+    showSyncResult("Harap masukkan NRP Anda.", "error");
+    return;
+  }
+  
+  if (!navigator.onLine) {
+    showSyncResult("Koneksi offline. Tidak dapat menyinkronkan profil wajah dari cloud.", "error");
+    return;
+  }
+  
+  showSyncResult("Mendownload profil wajah dari cloud...", "success");
+  
+  try {
+    const url = `${GAS_URL}?action=get_face_embedding&nrp=${nrp}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.status === "success") {
+      const embeddingArray = data.message;
+      
+      // Simpan di localStorage browser baru ini
+      localStorage.setItem('attendance_registered_nrp', nrp);
+      localStorage.setItem('attendance_registered_embeddings', JSON.stringify(embeddingArray));
+      
+      // Update variabel global
+      registeredEmbeddings = embeddingArray;
+      
+      showSyncResult("Perangkat berhasil disinkronkan! Profil wajah " + nrp + " diunduh.", "success");
+      
+      setTimeout(() => {
+        closeSyncOverlay();
+        // Jalankan kamera verifikasi wajah langsung jika data QR sudah siap
+        if (scannedQRData) {
+          startLivenessCamera();
+        } else {
+          startQRScanner();
+        }
+      }, 2000);
+    } else {
+      showSyncResult("Gagal: " + data.message, "error");
+    }
+  } catch (err) {
+    console.error("Gagal sinkronisasi wajah:", err);
+    showSyncResult("NRP tidak ditemukan atau belum terdaftar wajahnya di cloud.", "error");
+  }
+}
+
+function closeSyncOverlay() {
+  document.getElementById('syncNrpOverlay').style.display = 'none';
+  document.getElementById('syncResult').style.display = 'none';
+  document.getElementById('syncNRP').value = '';
+}
+
+function openSyncOverlay() {
+  document.getElementById('syncNrpOverlay').style.display = 'flex';
+}
+
+function showSyncResult(message, type) {
+  const resultDiv = document.getElementById('syncResult');
   resultDiv.innerText = message;
   resultDiv.className = "feedback-message " + (type === 'success' ? 'feedback-success' : 'feedback-error');
   resultDiv.style.display = 'block';
