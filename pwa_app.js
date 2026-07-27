@@ -40,10 +40,16 @@ function getOrCreateDeviceId() {
 // Muat Model face-api.js saat halaman dibuka
 window.addEventListener('DOMContentLoaded', async () => {
   setupNetworkMonitoring();
-  await loadFaceApiModels();
   loadLocalRegistration();
   updateOfflineBadge();
-  checkURLParameters();
+  await loadFaceApiModels();
+
+  // Cek jika halaman dibuka dari scan kamera bawaan HP (parameter URL)
+  const hasURLParams = checkURLParameters();
+  if (!hasURLParams && currentView === 'scan') {
+    // Hanya buka kamera scanner QR belakang jika BUKAN dari URL parameter
+    startQRScanner();
+  }
 });
 
 /**
@@ -67,17 +73,14 @@ function checkURLParameters() {
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP || !registeredEmbeddings) {
       openSyncOverlay(); // Tampilkan overlay sinkronisasi profil wajah
-      return;
+      return true;
     }
     
-    // Matikan pemindai PWA jika berjalan
-    if (html5QrcodeScanner) {
-      html5QrcodeScanner.clear().catch(e => console.log(e));
-    }
-    
-    // Pindah langsung ke Langkah 2: Verifikasi Wajah
+    // Pindah langsung ke Langkah 2: Verifikasi Wajah (Kamera Depan)
     startLivenessCamera();
+    return true;
   }
+  return false;
 }
 
 /**
@@ -119,9 +122,6 @@ async function loadFaceApiModels() {
     isModelsLoaded = true;
     document.getElementById('loadingOverlay').style.display = 'none';
     console.log("Face-api models loaded successfully!");
-
-    // Inisialisasi scanner QR setelah model siap
-    startQRScanner();
   } catch (error) {
     console.error("Gagal memuat model face-api.js:", error);
     alert("Gagal mengunduh AI model. Pastikan Anda terhubung ke internet pada pembukaan aplikasi pertama.");
@@ -316,6 +316,19 @@ function resetToScanStep1() {
  * Membuka kamera depan untuk Verifikasi Wajah & Liveness Check
  */
 async function startLivenessCamera() {
+  // Pastikan QR scanner belakang dihentikan secara bersih agar tidak mengunci hardware kamera
+  if (html5QrcodeScanner) {
+    try {
+      if (html5QrcodeScanner.isScanning) {
+        await html5QrcodeScanner.stop();
+      }
+      html5QrcodeScanner.clear();
+    } catch (e) {
+      console.warn("Clean up QR scanner error:", e);
+    }
+    html5QrcodeScanner = null;
+  }
+
   document.getElementById('scanStep1').style.display = 'none';
   document.getElementById('scanStep2').style.display = 'block';
   document.getElementById('challengeText').style.display = 'block';
