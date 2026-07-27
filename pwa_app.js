@@ -308,21 +308,24 @@ function cancelScan() {
   startQRScanner();
 }
 
+let baselineSmileRatio = null;
+
 function resetToScanStep1() {
   document.getElementById('scanStep1').style.display = 'block';
   document.getElementById('scanStep2').style.display = 'none';
   document.getElementById('scanResult').style.display = 'none';
   scannedQRData = null;
-  blinkCount = 0;
-  isBlinked = false;
   livenessPassed = false;
   faceVerified = false;
+  baselineSmileRatio = null;
 }
 
 /**
  * Membuka kamera depan untuk Verifikasi Wajah & Liveness Check
  */
 async function startLivenessCamera() {
+  baselineSmileRatio = null; // Reset baseline saat kamera terbuka
+
   // Pastikan QR scanner belakang dihentikan secara bersih agar tidak mengunci hardware kamera
   if (html5QrcodeScanner) {
     try {
@@ -369,7 +372,7 @@ function stopScanCamera() {
 }
 
 /**
- * Loop Pemrosesan Deteksi Wajah, Pencocokan Identitas, dan Deteksi Kedipan (Liveness)
+ * Loop Pemrosesan Deteksi Wajah, Pencocokan Identitas, dan Deteksi Senyuman (Liveness)
  */
 async function runLivenessLoop(video) {
   if (!scanStream) return; // Stop jika kamera dimatikan
@@ -391,6 +394,7 @@ async function runLivenessLoop(video) {
       faceGuide.className = "face-guide-oval verified";
     } else {
       faceVerified = false;
+      baselineSmileRatio = null;
       faceGuide.className = "face-guide-oval";
       challengeText.innerText = "Wajah tidak cocok dengan NRP terdaftar!";
       // Lanjutkan loop untuk mencari wajah yang sesuai
@@ -398,15 +402,13 @@ async function runLivenessLoop(video) {
       return;
     }
 
-    // 2. Deteksi Liveness: Challenge Tersenyum (Smile Detection)
+    // 2. Deteksi Liveness: Challenge Tersenyum (Dynamic Smile Detection)
     if (faceVerified && !livenessPassed) {
       challengeText.innerText = "Tantangan: SILAKAN TERSENYUM! 😊";
 
-      const smileScore = calculateSmileScore(detection.landmarks);
-      console.log("Smile Score:", smileScore);
+      const isSmileDetected = checkSmileLiveness(detection.landmarks);
 
-      // Rasio senyum: Tanpa senyum ~ 0.42 - 0.49, Tersenyum > 0.51
-      if (smileScore > 0.51) {
+      if (isSmileDetected) {
         livenessPassed = true;
         challengeText.innerText = "Senyuman Terdeteksi! 😊 Mengirim absensi...";
         stopScanCamera();
@@ -417,6 +419,8 @@ async function runLivenessLoop(video) {
       }
     }
   } else {
+    faceVerified = false;
+    baselineSmileRatio = null;
     faceGuide.className = "face-guide-oval";
     challengeText.innerText = "Dekatkan wajah Anda ke kamera";
   }
@@ -426,24 +430,42 @@ async function runLivenessLoop(video) {
 }
 
 /**
- * Menghitung Skor Senyuman berdasarkan rasio lebar mulut terhadap lebar mata
+ * Menghitung dan Memverifikasi Senyuman Dinamis (Membandingkan dengan Wajah Netral)
  */
-function calculateSmileScore(landmarks) {
+function checkSmileLiveness(landmarks) {
   const mouth = landmarks.getMouth();
   const leftEye = landmarks.getLeftEye();
   const rightEye = landmarks.getRightEye();
 
-  if (!mouth || mouth.length < 7 || !leftEye || !rightEye) return 0;
+  if (!mouth || mouth.length < 10 || !leftEye || !rightEye) return false;
 
-  // Jarak horizontal antara dua sudut bibir (mouth[0] ke mouth[6])
+  // Jarak horizontal sudut bibir
   const mouthWidth = Math.hypot(mouth[6].x - mouth[0].x, mouth[6].y - mouth[0].y);
-
-  // Jarak horizontal antara sudut mata kiri luar dan mata kanan luar (leftEye[0] ke rightEye[3])
+  // Jarak kedua mata
   const eyeWidth = Math.hypot(rightEye[3].x - leftEye[0].x, rightEye[3].y - leftEye[0].y);
 
-  if (eyeWidth === 0) return 0;
+  if (eyeWidth === 0) return false;
 
-  return mouthWidth / eyeWidth;
+  const currentSmileRatio = mouthWidth / eyeWidth;
+
+  // Tangkap rasio wajah netral saat pertama kali terdeteksi di oval
+  if (baselineSmileRatio === null) {
+    baselineSmileRatio = currentSmileRatio;
+    return false;
+  }
+
+  // Kriteria 1: Bibir melebar setidaknya 14% dari baseline netral pengguna (currentSmileRatio >= baselineSmileRatio * 1.14)
+  const isWidthStretched = (currentSmileRatio >= baselineSmileRatio * 1.14) && (currentSmileRatio > 0.54);
+
+  // Kriteria 2: Terangkatnya sudut bibir
+  const mouthCenterY = (mouth[0].y + mouth[6].y) / 2;
+  const mouthBottomY = mouth[9].y;
+  const cornerLift = (mouthBottomY - mouthCenterY) / eyeWidth;
+
+  console.log("Current Ratio:", currentSmileRatio.toFixed(3), "Baseline:", baselineSmileRatio.toFixed(3), "Lift:", cornerLift.toFixed(3));
+
+  // Senyum hanya dianggap VALID jika terjadi perubahan ekspresi senyum nyata dari wajah netral
+  return isWidthStretched || (cornerLift > 0.20 && currentSmileRatio >= baselineSmileRatio * 1.08);
 }
 
 /**
@@ -550,19 +572,50 @@ async function sendToGAS(payload) {
       return;
     }
 
-    if (challengeText) challengeText.innerText = "✅ Absensi Berhasil!";
+    if (challengeText) challengeText.innerText = "✅ Absensi Berhasil! Menutup halaman dalam 3 detik...";
     const successMsg = resData && resData.message ? resData.message : ("Absensi sukses dikirim! Terima kasih, " + payload.nrp + ".");
     showScanResult("✅ " + successMsg, "success");
 
+    // Berikan jeda 3 detik untuk memberikan konfirmasi ke pengguna, lalu tutup tab browser
     setTimeout(() => {
-      resetToScanStep1();
-      startQRScanner();
-    }, 3500);
+      closeBrowserTab();
+    }, 3000);
 
   } catch (error) {
     console.error("Koneksi gagal/offline saat mengirim ke GAS:", error);
     enqueueOfflineRecord(payload);
   }
+}
+
+/**
+ * Mencoba menutup tab/jendela browser setelah absensi selesai
+ */
+function closeBrowserTab() {
+  console.log("Mencoba menutup tab browser...");
+  try {
+    window.opener = null;
+    window.open('', '_self', '');
+    window.close();
+  } catch (e) {
+    console.log("Window close error:", e);
+  }
+
+  // Fallback jika browser memblokir window.close() otomatis
+  setTimeout(() => {
+    document.body.innerHTML = `
+      <div style="min-height: 100vh; background: #0b0f19; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Outfit', sans-serif; text-align: center; padding: 24px;">
+        <div style="width: 80px; height: 80px; background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; margin-bottom: 24px; box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);">
+          ✓
+        </div>
+        <h1 style="font-size: 1.8rem; font-weight: 700; color: #ffffff; margin-bottom: 8px;">Absensi Selesai!</h1>
+        <p style="color: #9ca3af; font-size: 0.95rem; margin-bottom: 32px; max-width: 320px; line-height: 1.5;">
+          Data kehadiran Anda telah berhasil diverifikasi dan tersimpan.
+        </p>
+        <button onclick="window.close();" style="background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; border: none; padding: 14px 32px; border-radius: 12px; font-weight: 600; font-size: 1rem; cursor: pointer; box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);">
+          Tutup Halaman
+        </button>
+      </div>`;
+  }, 300);
 }
 
 // =========================================================================
@@ -590,9 +643,8 @@ function enqueueOfflineRecord(payload) {
   showScanResult("Koneksi internet lambat/mati. Absen Anda berhasil diverifikasi & disimpan lokal secara aman. Otomatis disinkronkan saat sinyal membaik.", "warning");
 
   setTimeout(() => {
-    resetToScanStep1();
-    startQRScanner();
-  }, 6000);
+    closeBrowserTab();
+  }, 3500);
 }
 
 /**
