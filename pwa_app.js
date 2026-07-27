@@ -190,16 +190,7 @@ async function startQRScanner() {
 
   const config = { 
     fps: 15,
-    aspectRatio: 1.333333, // 4:3 matching viewport
-    qrbox: function(viewfinderWidth, viewfinderHeight) {
-      let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-      let edgeSize = Math.floor(minEdge * 0.85);
-      if (edgeSize < 200) edgeSize = 200;
-      return { width: edgeSize, height: edgeSize };
-    },
-    experimentalFeatures: {
-      useBarCodeDetectorIfSupported: true
-    }
+    aspectRatio: 1.333333 // 4:3 matching viewport (full frame scanning)
   };
 
   // 1. Coba kamera belakang (environment)
