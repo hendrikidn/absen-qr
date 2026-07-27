@@ -398,36 +398,17 @@ async function runLivenessLoop(video) {
       return;
     }
 
-    // 2. Deteksi Liveness: Challenge Kedipan Mata (Blink Detection)
+    // 2. Deteksi Liveness: Challenge Tersenyum (Smile Detection)
     if (faceVerified && !livenessPassed) {
-      challengeText.innerText = "Tantangan: BERKEDIPLAH SEKARANG! 😉";
+      challengeText.innerText = "Tantangan: SILAKAN TERSENYUM! 😊";
 
-      const landmarks = detection.landmarks;
-      const leftEye = landmarks.getLeftEye();
-      const rightEye = landmarks.getRightEye();
+      const smileScore = calculateSmileScore(detection.landmarks);
+      console.log("Smile Score:", smileScore);
 
-      // Hitung Eye Aspect Ratio (EAR) untuk kedua mata
-      const leftEAR = calculateEAR(leftEye);
-      const rightEAR = calculateEAR(rightEye);
-      const averageEAR = (leftEAR + rightEAR) / 2;
-
-      console.log("EAR: " + averageEAR);
-
-      // Deteksi mata tertutup (kedipan)
-      // Nilai normal mata terbuka: 0.26 - 0.35, tertutup pada mobile camera: < 0.235
-      if (averageEAR < 0.235) {
-        isBlinked = true; // Terdeteksi menutup mata
-        challengeText.innerText = "Kedipan terdeteksi! Buka mata Anda...";
-      } else if (isBlinked && averageEAR > 0.245) {
-        // Mata kembali terbuka setelah menutup = 1 Kedipan Sukses!
-        blinkCount++;
-        isBlinked = false;
-        console.log("Kedipan terdeteksi! Total: " + blinkCount);
-      }
-
-      if (blinkCount >= 1) {
+      // Rasio senyum: Tanpa senyum ~ 0.42 - 0.49, Tersenyum > 0.51
+      if (smileScore > 0.51) {
         livenessPassed = true;
-        challengeText.innerText = "Liveness OK! Mengirim absensi...";
+        challengeText.innerText = "Senyuman Terdeteksi! 😊 Mengirim absensi...";
         stopScanCamera();
 
         // Kirim absen
@@ -440,30 +421,29 @@ async function runLivenessLoop(video) {
     challengeText.innerText = "Dekatkan wajah Anda ke kamera";
   }
 
-  // Ulangi deteksi dalam 50ms untuk sampling kedipan cepat yang lebih sensitif
-  setTimeout(() => runLivenessLoop(video), 50);
+  // Ulangi deteksi dalam 60ms
+  setTimeout(() => runLivenessLoop(video), 60);
 }
 
 /**
- * Menghitung Eye Aspect Ratio (EAR) dari 6 titik landmark mata
+ * Menghitung Skor Senyuman berdasarkan rasio lebar mulut terhadap lebar mata
  */
-function calculateEAR(eye) {
-  // eye[0] ke eye[3] adalah sudut mata horizontal
-  // eye[1], eye[2], eye[4], eye[5] adalah koordinat vertikal
-  const p1 = eye[0];
-  const p2 = eye[1];
-  const p3 = eye[2];
-  const p4 = eye[3];
-  const p5 = eye[4];
-  const p6 = eye[5];
+function calculateSmileScore(landmarks) {
+  const mouth = landmarks.getMouth();
+  const leftEye = landmarks.getLeftEye();
+  const rightEye = landmarks.getRightEye();
 
-  // Rumus Euclidean Distance vertikal
-  const v1 = Math.sqrt(Math.pow(p2.x - p6.x, 2) + Math.pow(p2.y - p6.y, 2));
-  const v2 = Math.sqrt(Math.pow(p3.x - p5.x, 2) + Math.pow(p3.y - p5.y, 2));
-  // Jarak horizontal
-  const h = Math.sqrt(Math.pow(p1.x - p4.x, 2) + Math.pow(p1.y - p4.y, 2));
+  if (!mouth || mouth.length < 7 || !leftEye || !rightEye) return 0;
 
-  return (v1 + v2) / (2.0 * h);
+  // Jarak horizontal antara dua sudut bibir (mouth[0] ke mouth[6])
+  const mouthWidth = Math.hypot(mouth[6].x - mouth[0].x, mouth[6].y - mouth[0].y);
+
+  // Jarak horizontal antara sudut mata kiri luar dan mata kanan luar (leftEye[0] ke rightEye[3])
+  const eyeWidth = Math.hypot(rightEye[3].x - leftEye[0].x, rightEye[3].y - leftEye[0].y);
+
+  if (eyeWidth === 0) return 0;
+
+  return mouthWidth / eyeWidth;
 }
 
 /**
