@@ -174,9 +174,60 @@
     }
 
     .scanner-viewport video, .camera-viewport video {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover;
+    }
+
+    /* Visual scanner overlay guide */
+    .qr-scan-guide {
+      position: absolute;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      pointer-events: none;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .qr-guide-box {
+      width: 80%;
+      height: 80%;
+      position: relative;
+      box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45);
+      border-radius: 16px;
+    }
+
+    .scan-corner {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-color: #818cf8;
+      border-style: solid;
+    }
+    .scan-corner.top-left { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-top-left-radius: 12px; }
+    .scan-corner.top-right { top: -2px; right: -2px; border-width: 4px 4px 0 0; border-top-right-radius: 12px; }
+    .scan-corner.bottom-left { bottom: -2px; left: -2px; border-width: 0 0 4px 4px; border-bottom-left-radius: 12px; }
+    .scan-corner.bottom-right { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-bottom-right-radius: 12px; }
+
+    .scan-line {
+      position: absolute;
+      top: 0;
+      left: 5%;
+      width: 90%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #818cf8, #c084fc, transparent);
+      box-shadow: 0 0 10px #818cf8;
+      animation: scanAnim 2s ease-in-out infinite;
+    }
+
+    @keyframes scanAnim {
+      0% { top: 5%; }
+      50% { top: 90%; }
+      100% { top: 5%; }
     }
 
     /* Face indicator overlays */
@@ -424,6 +475,15 @@
         <label>Langkah 1: Scan QR Code di Monitor PC</label>
         <div id="reader" class="scanner-viewport">
           <!-- html5-qrcode will mount video here -->
+          <div class="qr-scan-guide">
+            <div class="qr-guide-box">
+              <div class="scan-corner top-left"></div>
+              <div class="scan-corner top-right"></div>
+              <div class="scan-corner bottom-left"></div>
+              <div class="scan-corner bottom-right"></div>
+              <div class="scan-line"></div>
+            </div>
+          </div>
         </div>
         <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top:-10px; margin-bottom: 20px;">
           Posisikan QR Code di dalam kotak scanner
