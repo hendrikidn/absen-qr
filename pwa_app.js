@@ -169,7 +169,15 @@ function startQRScanner() {
   resetToScanStep1();
 
   html5QrcodeScanner = new Html5Qrcode("reader");
-  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+  const config = { 
+    fps: 15, 
+    qrbox: function(viewfinderWidth, viewfinderHeight) {
+      let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+      let edgeSize = Math.floor(minEdge * 0.7);
+      if (edgeSize < 200) edgeSize = 200;
+      return { width: edgeSize, height: edgeSize };
+    }
+  };
 
   html5QrcodeScanner.start(
     { facingMode: "environment" }, // Kamera belakang
@@ -181,14 +189,17 @@ function startQRScanner() {
   });
 }
 
-function onQRScanSuccess(decodedText, decodedResult) {
+async function onQRScanSuccess(decodedText, decodedResult) {
   try {
-    // Stop scanning QR
-    html5QrcodeScanner.stop().then(() => {
-      console.log("QR Scan stopped.");
-    }).catch(e => console.log(e));
+    // 1. Matikan dan lepaskan kamera belakang secara bersih untuk mencegah konflik driver kamera
+    try {
+      await html5QrcodeScanner.stop();
+      console.log("QR Scan stopped successfully.");
+    } catch (stopError) {
+      console.warn("Gagal menghentikan scanner secara bersih:", stopError);
+    }
 
-    // Periksa jika decodedText berupa URL atau JSON string
+    // 2. Periksa jika decodedText berupa URL atau JSON string
     if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
       const url = new URL(decodedText);
       const outletId = url.searchParams.get('outlet_id');
@@ -228,6 +239,7 @@ function onQRScanSuccess(decodedText, decodedResult) {
   } catch (error) {
     console.error(error);
     showScanResult("Format QR Code salah. Pastikan men-scan QR absensi resmi di layar PC outlet.", "error");
+    // Nyalakan kembali scanner setelah jeda karena terjadi kegagalan pembacaan payload
     setTimeout(startQRScanner, 3000);
   }
 }
