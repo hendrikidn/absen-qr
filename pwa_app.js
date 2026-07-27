@@ -227,17 +227,9 @@ async function startQRScanner() {
 
 async function onQRScanSuccess(decodedText, decodedResult) {
   try {
-    // 1. Matikan dan lepaskan kamera belakang secara bersih untuk mencegah konflik driver kamera
-    try {
-      if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
-        await html5QrcodeScanner.stop();
-        console.log("QR Scan stopped successfully.");
-      }
-    } catch (stopError) {
-      console.warn("Gagal menghentikan scanner secara bersih:", stopError);
-    }
+    console.log("QR Code terdeteksi:", decodedText);
 
-    // 2. Periksa jika decodedText berupa URL atau JSON string
+    // 1. Periksa jika decodedText berupa URL atau JSON string
     if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
       const url = new URL(decodedText);
       const outletId = url.searchParams.get('outlet_id');
@@ -262,23 +254,32 @@ async function onQRScanSuccess(decodedText, decodedResult) {
       }
     }
 
-    // Periksa apakah karyawan sudah teregistrasi wajahnya di HP ini
+    console.log("QR Code valid terbaca:", scannedQRData);
+
+    // 2. Periksa apakah karyawan sudah teregistrasi wajahnya di HP ini
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP || !registeredEmbeddings) {
+      // Matikan scanner secara bersih agar tidak mentrigger callback berulang
+      if (html5QrcodeScanner) {
+        try {
+          if (html5QrcodeScanner.isScanning) {
+            html5QrcodeScanner.stop().catch(e => console.log(e));
+          }
+        } catch(e){}
+      }
       openSyncOverlay(); // Tampilkan overlay sinkronisasi profil wajah
       return;
     }
 
-    console.log("QR Code valid terbaca:", scannedQRData);
-
-    // Pindah ke Langkah 2: Deteksi Wajah & Liveness
-    startLivenessCamera();
+    // 3. Pindah langsung ke Langkah 2: Deteksi Wajah & Liveness
+    // Menggunakan setTimeout pendek agar callback onQRScanSuccess selesai tanpa mengunci thread scanner
+    setTimeout(() => {
+      startLivenessCamera();
+    }, 50);
 
   } catch (error) {
-    console.error(error);
+    console.error("Format QR Code tidak valid:", error);
     showScanResult("Format QR Code salah. Pastikan men-scan QR absensi resmi di layar PC outlet.", "error");
-    // Nyalakan kembali scanner setelah jeda karena terjadi kegagalan pembacaan payload
-    setTimeout(startQRScanner, 3000);
   }
 }
 
