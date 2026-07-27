@@ -162,7 +162,14 @@ function switchView(viewName) {
  */
 function startQRScanner() {
   if (html5QrcodeScanner) {
-    html5QrcodeScanner.clear().catch(e => console.log(e));
+    try {
+      if (html5QrcodeScanner.isScanning) {
+        html5QrcodeScanner.stop().catch(e => console.log(e));
+      }
+      html5QrcodeScanner.clear().catch(e => console.log(e));
+    } catch (e) {
+      console.log("Cleanup scanner instance:", e);
+    }
   }
 
   // Tampilkan Step 1, Sembunyikan Step 2
@@ -170,22 +177,48 @@ function startQRScanner() {
 
   html5QrcodeScanner = new Html5Qrcode("reader");
   const config = { 
-    fps: 15, 
+    fps: 15,
+    aspectRatio: 1.333333, // 4:3 matching viewport
     qrbox: function(viewfinderWidth, viewfinderHeight) {
       let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-      let edgeSize = Math.floor(minEdge * 0.7);
+      let edgeSize = Math.floor(minEdge * 0.85);
       if (edgeSize < 200) edgeSize = 200;
       return { width: edgeSize, height: edgeSize };
+    },
+    experimentalFeatures: {
+      useBarCodeDetectorIfSupported: true
     }
   };
 
+  const primaryConstraints = {
+    facingMode: "environment",
+    width: { ideal: 1280 },
+    height: { ideal: 720 }
+  };
+
   html5QrcodeScanner.start(
-    { facingMode: "environment" }, // Kamera belakang
+    primaryConstraints, // Kamera belakang HD
     config,
     onQRScanSuccess,
     onQRScanFailure
   ).catch(err => {
-    console.error("Gagal menyalakan kamera scanner:", err);
+    console.warn("Retrying scanner with basic environment constraint:", err);
+    html5QrcodeScanner.start(
+      { facingMode: "environment" },
+      config,
+      onQRScanSuccess,
+      onQRScanFailure
+    ).catch(err2 => {
+      console.warn("Retrying scanner with default camera device:", err2);
+      html5QrcodeScanner.start(
+        true, // Kamera default device (termasuk webcam PC)
+        config,
+        onQRScanSuccess,
+        onQRScanFailure
+      ).catch(err3 => {
+        console.error("Gagal menyalakan kamera scanner:", err3);
+      });
+    });
   });
 }
 
@@ -193,8 +226,10 @@ async function onQRScanSuccess(decodedText, decodedResult) {
   try {
     // 1. Matikan dan lepaskan kamera belakang secara bersih untuk mencegah konflik driver kamera
     try {
-      await html5QrcodeScanner.stop();
-      console.log("QR Scan stopped successfully.");
+      if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+        await html5QrcodeScanner.stop();
+        console.log("QR Scan stopped successfully.");
+      }
     } catch (stopError) {
       console.warn("Gagal menghentikan scanner secara bersih:", stopError);
     }
