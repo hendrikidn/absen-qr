@@ -31,7 +31,42 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadFaceApiModels();
   loadLocalRegistration();
   updateOfflineBadge();
+  checkURLParameters();
 });
+
+/**
+ * Memeriksa jika ada parameter URL yang dikirim (misal jika di-scan lewat kamera bawaan HP)
+ */
+function checkURLParameters() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const outletId = urlParams.get('outlet_id');
+  const timestamp = urlParams.get('timestamp');
+  const totpToken = urlParams.get('totp_token');
+  
+  if (outletId && timestamp && totpToken) {
+    scannedQRData = {
+      outlet_id: outletId,
+      timestamp: Number(timestamp),
+      totp_token: totpToken
+    };
+    console.log("Parameter URL terdeteksi dari kamera bawaan HP:", scannedQRData);
+    
+    // Pastikan user terdaftar di ponsel ini
+    const localNRP = localStorage.getItem('attendance_registered_nrp');
+    if (!localNRP || !registeredEmbeddings) {
+      showScanResult("Error: Ponsel belum diregistrasikan. Masuk ke tab 'Registrasi' terlebih dahulu.", "error");
+      return;
+    }
+    
+    // Matikan pemindai PWA jika berjalan
+    if (html5QrcodeScanner) {
+      html5QrcodeScanner.clear().catch(e => console.log(e));
+    }
+    
+    // Pindah langsung ke Langkah 2: Verifikasi Wajah
+    startLivenessCamera();
+  }
+}
 
 /**
  * Memantau Koneksi Jaringan
@@ -153,12 +188,29 @@ function onQRScanSuccess(decodedText, decodedResult) {
       console.log("QR Scan stopped.");
     }).catch(e => console.log(e));
 
-    // Deserialisasi data QR
-    // Asumsi payload QR: {"outlet_id":"OUTLET_01", "timestamp": 1785123456, "totp_token":"827364"}
-    scannedQRData = JSON.parse(decodedText);
-
-    if (!scannedQRData.outlet_id || !scannedQRData.totp_token || !scannedQRData.timestamp) {
-      throw new Error("Format QR Code tidak sesuai");
+    // Periksa jika decodedText berupa URL atau JSON string
+    if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
+      const url = new URL(decodedText);
+      const outletId = url.searchParams.get('outlet_id');
+      const timestamp = url.searchParams.get('timestamp');
+      const totpToken = url.searchParams.get('totp_token');
+      
+      if (!outletId || !totpToken || !timestamp) {
+        throw new Error("Parameter URL QR Code tidak lengkap");
+      }
+      
+      scannedQRData = {
+        outlet_id: outletId,
+        timestamp: Number(timestamp),
+        totp_token: totpToken
+      };
+    } else {
+      // Fallback format lama (JSON)
+      scannedQRData = JSON.parse(decodedText);
+      
+      if (!scannedQRData.outlet_id || !scannedQRData.totp_token || !scannedQRData.timestamp) {
+        throw new Error("Format JSON QR Code tidak sesuai");
+      }
     }
 
     // Periksa apakah karyawan sudah teregistrasi wajahnya di HP ini
