@@ -495,25 +495,19 @@ async function startQRScanner() {
   // Beri waktu browser render elemen yang baru dikosongkan sebelum Html5Qrcode mulai
   await new Promise(r => setTimeout(r, 100));
 
-  // Konfigurasi scanner — gunakan fixed fallback jika dimensi belum tersedia (elemen baru render)
+  // Konfigurasi scanner — TANPA qrbox agar seluruh frame kamera di-scan
+  // qrbox kecil (180x180) adalah penyebab kegagalan decode: QR code dari monitor PC
+  // sering melebihi area qrbox sehingga library tidak bisa membaca QR yang tidak lengkap
   const config = {
-    fps: 10,
-    qrbox: (viewfinderWidth, viewfinderHeight) => {
-      const w = viewfinderWidth || 0;
-      const h = viewfinderHeight || 0;
-      const minDim = Math.min(w, h);
-      // PENTING: jika dimensi = 0 (elemen belum ter-render), gunakan ukuran fixed aman
-      if (minDim < 10) {
-        console.warn('[DBG] qrbox: dimensi tidak valid (' + w + 'x' + h + '), pakai fallback 250px');
-        dbgLog('⚠️ qrbox fallback 250px (viewfinder=' + w + 'x' + h + ')');
-        return { width: 250, height: 250 };
-      }
-      const size = Math.floor(minDim * 0.8);
-      console.log('[DBG] qrbox: ' + size + 'x' + size + ' (viewfinder=' + w + 'x' + h + ')');
-      dbgLog('📏 qrbox: ' + size + 'x' + size + ' (viewfinder=' + w + 'x' + h + ')');
-      return { width: size, height: size };
+    fps: 8, // FPS lebih rendah = kualitas frame lebih baik per attempt
+    // HAPUS qrbox — scan SELURUH frame kamera untuk maksimal keberhasilan decode
+    aspectRatio: 4 / 3,
+    experimentalFeatures: {
+      useBarCodeDetectorIfSupported: true // gunakan native BarcodeDetector API jika tersedia
     }
   };
+  dbgLog('\u2699\ufe0f Config: fps=8, full-frame scan (tanpa qrbox)');
+  console.log('[DBG] startQRScanner: config tanpa qrbox, fps=8');
 
   try {
     // Dapatkan daftar kamera
