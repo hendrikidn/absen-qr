@@ -181,6 +181,10 @@ function switchView(viewName) {
  * Menyalakan Kamera QR Code Reader di HP
  */
 async function startQRScanner() {
+  // 1. Pastikan semua kamera lain (depan/registrasi) dihentikan secara total
+  stopScanCamera();
+  stopRegistrationCamera();
+
   if (html5QrcodeScanner) {
     try {
       if (html5QrcodeScanner.isScanning) {
@@ -195,6 +199,9 @@ async function startQRScanner() {
 
   // Tampilkan Step 1, Sembunyikan Step 2
   resetToScanStep1();
+
+  // Jeda 150ms untuk memberikan waktu hardware kamera dilepaskan oleh OS/Browser
+  await new Promise(r => setTimeout(r, 150));
 
   const config = { 
     fps: 15,
@@ -213,7 +220,7 @@ async function startQRScanner() {
     console.log("Kamera QR scanner aktif (kamera belakang).");
   } catch (err1) {
     console.warn("Gagal membuka kamera belakang, mencoba kamera depan/webcam:", err1);
-    // 2. Fallback: Re-instantiate Html5Qrcode baru & coba kamera user/webcam
+    await new Promise(r => setTimeout(r, 200));
     try {
       if (html5QrcodeScanner) {
         try { html5QrcodeScanner.clear(); } catch(e){}
@@ -247,22 +254,19 @@ async function onQRScanSuccess(decodedText, decodedResult) {
       if (!outlet || !totpToken || !timestamp) {
         throw new Error("Parameter URL QR Code tidak lengkap");
       }
-      
-      // Hentikan scanner kamera belakang secara bersih sebelum redirect
-      if (html5QrcodeScanner) {
-        try {
-          if (html5QrcodeScanner.isScanning) {
-            await html5QrcodeScanner.stop();
-          }
-          html5QrcodeScanner.clear();
-        } catch(e){}
-        html5QrcodeScanner = null;
-      }
 
-      // Redirect langsung ke URL QR Code baru yang di-scan ulang
-      console.log("Mengarahkan browser ke URL QR Code baru:", decodedText);
-      window.location.href = decodedText;
-      return;
+      scannedQRData = {
+        outlet: outlet,
+        timestamp: Number(timestamp),
+        totp_token: totpToken
+      };
+
+      // Perbarui URL address bar tanpa mereload halaman
+      if (window.history && window.history.replaceState) {
+        try {
+          window.history.replaceState({}, document.title, decodedText);
+        } catch(e){}
+      }
     } else {
       // Fallback format lama (JSON) jika bukan URL
       scannedQRData = JSON.parse(decodedText);
@@ -276,24 +280,27 @@ async function onQRScanSuccess(decodedText, decodedResult) {
 
     console.log("QR Code valid terbaca:", scannedQRData);
 
+    // Hentikan scanner kamera belakang secara bersih sebelum beralih ke kamera depan
+    if (html5QrcodeScanner) {
+      try {
+        if (html5QrcodeScanner.isScanning) {
+          await html5QrcodeScanner.stop();
+        }
+        html5QrcodeScanner.clear();
+      } catch(e){}
+      html5QrcodeScanner = null;
+    }
+
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP) {
-      // Matikan scanner secara bersih agar tidak mentrigger callback berulang
-      if (html5QrcodeScanner) {
-        try {
-          if (html5QrcodeScanner.isScanning) {
-            html5QrcodeScanner.stop().catch(e => console.log(e));
-          }
-        } catch(e){}
-      }
       openSyncOverlay(); // Tampilkan overlay registrasi profil Karyawan
       return;
     }
 
-    // 3. Pindah langsung ke Langkah 2: Deteksi Wajah & Liveness
+    // Pindah langsung ke Langkah 2: Verifikasi Wajah (Kamera Depan)
     setTimeout(() => {
       startLivenessCamera();
-    }, 50);
+    }, 150);
 
   } catch (error) {
     console.error("Format QR Code tidak valid:", error);
@@ -315,16 +322,17 @@ function cancelScan() {
  * Memulai ulang scanner QR Code pada Langkah 1
  */
 async function restartQRScanner() {
-  // 1. Jika URL saat ini masih menyimpan parameter query lama, reload ke URL bersih tanpa parameter
-  if (window.location.search) {
-    window.location.href = window.location.pathname;
-    return;
-  }
-
-  // 2. Matikan kamera verifikasi wajah depan jika sedang menyala
+  // 1. Matikan kamera verifikasi depan jika sedang aktif
   stopScanCamera();
 
-  // 3. Reset state & data QR sebelumnya
+  // 2. Bersihkan query parameter di address bar tanpa reload
+  if (window.history && window.history.replaceState) {
+    try {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch(e){}
+  }
+
+  // 3. Reset state tampilan ke Step 1
   resetToScanStep1();
 
   // 4. Nyalakan ulang scanner kamera belakang
@@ -375,6 +383,12 @@ async function startLivenessCamera() {
     html5QrcodeScanner = null;
   }
 
+  // Hentikan stream scan sebelumnya jika ada
+  stopScanCamera();
+
+  // Berikan jeda 150ms agar hardware kamera dilepaskan oleh OS/Browser
+  await new Promise(r => setTimeout(r, 150));
+
   document.getElementById('scanStep1').style.display = 'none';
   document.getElementById('scanStep2').style.display = 'block';
   document.getElementById('challengeText').style.display = 'block';
@@ -394,9 +408,11 @@ async function startLivenessCamera() {
     };
   } catch (error) {
     console.error("Gagal membuka kamera depan:", error);
-    showScanResult("Gagal mengakses kamera depan untuk verifikasi wajah.", "error");
-    resetToScanStep1();
-    startQRScanner();
+    showScanResult("Gagal mengakses kamera depan untuk verifikasi wajah. Pastikan izin akses kamera aktif.", "error");
+    setTimeout(() => {
+      resetToScanStep1();
+      startQRScanner();
+    }, 3000);
   }
 }
 
