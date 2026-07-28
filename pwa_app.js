@@ -261,6 +261,14 @@ async function stopAllCameras() {
     html5QrcodeScanner = null;
   }
 
+  // Bersihkan elemen anak pada container scanner
+  try {
+    const readerEl = document.getElementById('reader');
+    if (readerEl) {
+      readerEl.innerHTML = "";
+    }
+  } catch(e){}
+
   // Hentikan seluruh stream yang masih menempel pada elemen video di DOM
   try {
     const videoElements = document.querySelectorAll('video');
@@ -286,6 +294,11 @@ async function startQRScanner() {
 
   // Tampilkan Step 1, Sembunyikan Step 2
   resetToScanStep1();
+
+  const readerEl = document.getElementById('reader');
+  if (readerEl) {
+    readerEl.innerHTML = "";
+  }
 
   const config = { 
     fps: 15,
@@ -319,6 +332,7 @@ async function startQRScanner() {
       console.warn("Pemeriksaan daftar kamera gagal:", camErr);
     }
 
+    if (readerEl) readerEl.innerHTML = "";
     html5QrcodeScanner = new Html5Qrcode("reader");
 
     if (cameraId) {
@@ -341,6 +355,7 @@ async function startQRScanner() {
     console.warn("Gagal membuka kamera scanner via deviceId/facingMode, mencoba fallback...", err1);
     try {
       try { await stopAllCameras(); } catch(e){}
+      if (readerEl) readerEl.innerHTML = "";
       html5QrcodeScanner = new Html5Qrcode("reader");
       await html5QrcodeScanner.start(
         { facingMode: "user" },
@@ -406,7 +421,12 @@ function parseQRPayload(decodedText) {
   return null;
 }
 
+let isProcessingQR = false;
+
 async function onQRScanSuccess(decodedText, decodedResult) {
+  if (isProcessingQR) return;
+  isProcessingQR = true;
+
   try {
     console.log("Raw QR Code terdeteksi:", decodedText);
 
@@ -414,6 +434,7 @@ async function onQRScanSuccess(decodedText, decodedResult) {
     if (!parsedData) {
       console.error("Payload QR Code tidak dapat diproses:", decodedText);
       showScanResult("Format QR Code salah. Pastikan memindai QR Code absensi resmi pada layar PC outlet.", "error");
+      setTimeout(() => { isProcessingQR = false; }, 2000);
       return;
     }
 
@@ -433,16 +454,19 @@ async function onQRScanSuccess(decodedText, decodedResult) {
     if (!localNRP) {
       await stopAllCameras();
       openSyncOverlay(); // Tampilkan overlay registrasi profil Karyawan
+      isProcessingQR = false;
       return;
     }
 
     // 3. Hentikan scanner & buka langsung Kamera Liveness Langkah 2
     await stopAllCameras();
     await startLivenessCamera();
+    isProcessingQR = false;
 
   } catch (error) {
     console.error("Gagal memproses QR Code:", error);
     showScanResult("Gagal membaca QR Code: " + (error.message || error.toString()), "error");
+    isProcessingQR = false;
   }
 }
 
