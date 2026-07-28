@@ -14,7 +14,7 @@ let faceMatcher = null;
 let html5QrcodeScanner = null;
 let scanStream = null;
 let regStream = null;
-let registeredEmbeddings = null; // Embedding wajah karyawan yang terdaftar di ponsel ini
+let latestLiveDescriptor = null; // Deskriptor wajah live dari kamera (dikirim langsung ke server)
 
 // Variabel Data dari Hasil Scan QR Code PC
 let scannedQRData = null;
@@ -69,13 +69,16 @@ function checkURLParameters() {
     };
     console.log("Parameter URL terdeteksi dari kamera bawaan HP:", scannedQRData);
     
-    if (!registeredEmbeddings) {
-      loadLocalRegistration();
+    // Hapus parameter URL dari address bar setelah dibaca agar tidak membekas/terpakai ulang
+    if (window.history && window.history.replaceState) {
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch(e){}
     }
 
     // Pastikan user terdaftar di ponsel ini
     const localNRP = localStorage.getItem('attendance_registered_nrp');
-    if (!localNRP || !registeredEmbeddings) {
+    if (!localNRP) {
       openSyncOverlay(); // Tampilkan overlay sinkronisasi profil wajah
       return true;
     }
@@ -133,21 +136,15 @@ async function loadFaceApiModels() {
 }
 
 /**
- * Memuat data pendaftaran wajah yang tersimpan di LocalStorage
+ * Memuat data pendaftaran NRP yang tersimpan di LocalStorage (Tanpa menyimpan data wajah di HP)
  */
 function loadLocalRegistration() {
-  const localData = localStorage.getItem('attendance_registered_nrp');
-  const localEmbeddings = localStorage.getItem('attendance_registered_embeddings');
+  const localNRP = localStorage.getItem('attendance_registered_nrp');
+  localStorage.removeItem('attendance_registered_embeddings'); // Hapus data lama jika ada
 
-  if (localData && localEmbeddings) {
-    try {
-      registeredEmbeddings = JSON.parse(localEmbeddings);
-      console.log("Data pendaftaran lokal ditemukan untuk NRP: " + localData);
-      return true;
-    } catch(e) {
-      console.error("Gagal parse embeddings lokal:", e);
-      registeredEmbeddings = null;
-    }
+  if (localNRP) {
+    console.log("Data profil lokal ditemukan untuk NRP: " + localNRP);
+    return true;
   }
   return false;
 }
@@ -269,13 +266,8 @@ async function onQRScanSuccess(decodedText, decodedResult) {
 
     console.log("QR Code valid terbaca:", scannedQRData);
 
-    // 2. Pastikan data registrasi lokal selalu dibaca ulang dari LocalStorage
-    if (!registeredEmbeddings) {
-      loadLocalRegistration();
-    }
-
     const localNRP = localStorage.getItem('attendance_registered_nrp');
-    if (!localNRP || !registeredEmbeddings) {
+    if (!localNRP) {
       // Matikan scanner secara bersih agar tidak mentrigger callback berulang
       if (html5QrcodeScanner) {
         try {
@@ -284,7 +276,7 @@ async function onQRScanSuccess(decodedText, decodedResult) {
           }
         } catch(e){}
       }
-      openSyncOverlay(); // Tampilkan overlay sinkronisasi profil wajah
+      openSyncOverlay(); // Tampilkan overlay registrasi profil Karyawan
       return;
     }
 
@@ -314,18 +306,39 @@ function cancelScan() {
  * Memulai ulang scanner QR Code pada Langkah 1
  */
 async function restartQRScanner() {
-  const resultDiv = document.getElementById('scanResult');
-  if (resultDiv) resultDiv.style.display = 'none';
+  // 1. Bersihkan parameter URL di browser HP jika ada
+  if (window.history && window.history.replaceState) {
+    try {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch(e){}
+  }
+
+  // 2. Matikan kamera verifikasi wajah depan jika sedang menyala
+  stopScanCamera();
+
+  // 3. Reset state & data QR sebelumnya
+  resetToScanStep1();
+
+  // 4. Nyalakan ulang scanner kamera belakang
   showScanResult("⏳ Memulai ulang kamera QR Code scanner...", "success");
   await startQRScanner();
+
   setTimeout(() => {
-    if (resultDiv) resultDiv.style.display = 'none';
-  }, 1500);
+    const resultDiv = document.getElementById('scanResult');
+    if (resultDiv && resultDiv.innerText.indexOf("Memulai ulang") !== -1) {
+      resultDiv.style.display = 'none';
+    }
+  }, 1200);
 }
 
 let baselineSmileRatio = null;
 
 function resetToScanStep1() {
+  if (window.history && window.history.replaceState) {
+    try {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch(e){}
+  }
   document.getElementById('scanStep1').style.display = 'block';
   document.getElementById('scanStep2').style.display = 'none';
   document.getElementById('scanResult').style.display = 'none';
@@ -401,40 +414,30 @@ async function runLivenessLoop(video) {
     .withFaceDescriptor();
 
   if (detection) {
-    // 1. Verifikasi Kecocokan Wajah dengan Embedding Terdaftar
-    const distance = faceapi.euclideanDistance(detection.descriptor, new Float32Array(registeredEmbeddings));
-    // Batas toleransi kecocokan (makin kecil makin ketat, standard: 0.6)
-    if (distance < 0.55) {
-      faceVerified = true;
-      faceGuide.className = "face-guide-oval verified";
-    } else {
-      faceVerified = false;
-      baselineSmileRatio = null;
-      faceGuide.className = "face-guide-oval";
-      challengeText.innerText = "Wajah tidak cocok dengan NRP terdaftar!";
-      // Lanjutkan loop untuk mencari wajah yang sesuai
-      setTimeout(() => runLivenessLoop(video), 200);
-      return;
-    }
+    // 1. Deteksi Wajah Live (Bentuk Deskriptor Live untuk dikirim ke server)
+    faceVerified = true;
+    latestLiveDescriptor = Array.from(detection.descriptor);
+    faceGuide.className = "face-guide-oval verified";
 
     // 2. Deteksi Liveness: Challenge Tersenyum (Dynamic Smile Detection)
-    if (faceVerified && !livenessPassed) {
+    if (!livenessPassed) {
       challengeText.innerText = "Tantangan: SILAKAN TERSENYUM! 😊";
 
       const isSmileDetected = checkSmileLiveness(detection.landmarks);
 
       if (isSmileDetected) {
         livenessPassed = true;
-        challengeText.innerText = "Senyuman Terdeteksi! 😊 Mengirim absensi...";
+        challengeText.innerText = "Senyuman Terdeteksi! 😊 Mengirim sampel ke server...";
         stopScanCamera();
 
-        // Kirim absen
-        submitAttendance();
+        // Kirim absen beserta live descriptor ke server cloud
+        submitAttendance(latestLiveDescriptor);
         return;
       }
     }
   } else {
     faceVerified = false;
+    latestLiveDescriptor = null;
     baselineSmileRatio = null;
     faceGuide.className = "face-guide-oval";
     challengeText.innerText = "Dekatkan wajah Anda ke kamera";
@@ -486,7 +489,7 @@ function checkSmileLiveness(landmarks) {
 /**
  * Memproses Pengiriman Data Kehadiran (Online / Masuk Antrean Offline)
  */
-function submitAttendance() {
+function submitAttendance(liveFaceDescriptor) {
   const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
   const challengeText = document.getElementById('challengeText');
 
@@ -532,6 +535,7 @@ function submitAttendance() {
       latitude: lat,
       longitude: lng,
       accuracy: Math.round(accuracy || 0),
+      face_embedding: liveFaceDescriptor || latestLiveDescriptor,
       face_verified: faceVerified,
       liveness_passed: livenessPassed,
       attendance_type: "CLOCK_IN",
@@ -822,11 +826,10 @@ async function captureFaceEmbeddings() {
       return;
     }
 
-    // 3. Jika server menyetujui, simpan data ke LocalStorage HP
+    // 3. Jika server menyetujui, simpan NRP & Device ID ke LocalStorage HP (Tanpa menyimpan data wajah di HP)
     localStorage.setItem('attendance_registered_nrp', nrp);
-    localStorage.setItem('attendance_registered_embeddings', JSON.stringify(embeddingArray));
+    localStorage.removeItem('attendance_registered_embeddings');
     localStorage.setItem('attendance_registered_device_id', deviceId);
-    registeredEmbeddings = embeddingArray;
 
     countSpan.innerText = "3"; // Simulasi selesai
     const serverMessage = resData && resData.message ? resData.message : ("Registrasi Wajah NRP " + nrp + " Berhasil!");
