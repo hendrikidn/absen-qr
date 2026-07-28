@@ -331,6 +331,22 @@ async function openCameraStream(facingMode = "user") {
  * dan membebaskan hardware kamera secara bersih dari OS driver.
  */
 async function stopAllCameras() {
+  // Hentikan native BarcodeDetector scanner jika aktif
+  if (_nativeScannerInterval) {
+    clearInterval(_nativeScannerInterval);
+    _nativeScannerInterval = null;
+  }
+  if (_nativeScannerStream) {
+    try {
+      _nativeScannerStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+    } catch (e) {}
+    _nativeScannerStream = null;
+  }
+  if (_nativeScannerVideo) {
+    try { _nativeScannerVideo.srcObject = null; } catch (e) {}
+    _nativeScannerVideo = null;
+  }
+
   if (scanStream) {
     try {
       scanStream.getTracks().forEach(track => {
@@ -458,12 +474,19 @@ function resetToScanStep1() {
 }
 
 /**
+ * State untuk custom native scanner (BarcodeDetector)
+ */
+let _nativeScannerStream = null;
+let _nativeScannerInterval = null;
+let _nativeScannerVideo = null;
+
+/**
  * Menyalakan Kamera QR Code Reader di HP
+ * Menggunakan BarcodeDetector native API (lebih handal untuk QR dari layar PC)
+ * dengan fallback ke Html5Qrcode jika tidak tersedia
  */
 async function startQRScanner() {
   console.log('[DBG] startQRScanner() dipanggil');
-
-  // Bersihkan state processing
   isProcessingQRScan = false;
 
   try {
@@ -473,113 +496,199 @@ async function startQRScanner() {
     console.warn("Stop kamera error:", e);
   }
 
-  // Reset UI ke Langkah 1
   resetToScanStep1UI();
 
-  // Bersihkan #reader — cukup innerHTML saja, stopAllCameras sudah melakukan clone/replace
-  // Jangan clone/replace lagi di sini karena elemen yang baru di-clone belum tentu ter-render
-  // dan dimensinya bisa 0, menyebabkan qrbox = 0x0 (scanner tidak scan apapun)
-  try {
-    const readerEl = document.getElementById('reader');
-    if (readerEl) {
-      console.log('[DBG] startQRScanner: #reader children sebelum clear:', readerEl.children.length);
-      readerEl.innerHTML = '';
-      console.log('[DBG] startQRScanner: #reader di-clear (tanpa clone)');
-    } else {
-      console.error('[DBG] startQRScanner: element #reader TIDAK DITEMUKAN di DOM!');
-    }
-  } catch (e) {
-    console.warn("Cleanup reader element error:", e);
+  // Bersihkan #reader
+  const readerEl = document.getElementById('reader');
+  if (readerEl) {
+    readerEl.innerHTML = '';
+    console.log('[DBG] startQRScanner: #reader di-clear');
+  } else {
+    console.error('[DBG] startQRScanner: #reader TIDAK DITEMUKAN!');
+    return;
   }
 
-  // Beri waktu browser render elemen yang baru dikosongkan sebelum Html5Qrcode mulai
+  // Beri waktu browser render
   await new Promise(r => setTimeout(r, 100));
 
-  // Konfigurasi scanner — TANPA qrbox agar seluruh frame kamera di-scan
-  // qrbox kecil (180x180) adalah penyebab kegagalan decode: QR code dari monitor PC
-  // sering melebihi area qrbox sehingga library tidak bisa membaca QR yang tidak lengkap
+  // Cek apakah BarcodeDetector tersedia (Chrome Android 83+)
+  const hasBarcodeDetector = ('BarcodeDetector' in window);
+  dbgLog(`🔬 BarcodeDetector: ${hasBarcodeDetector ? 'TERSEDIA ✅' : 'tidak tersedia, pakai ZXing'}`);
+  console.log('[DBG] BarcodeDetector available:', hasBarcodeDetector);
+
+  if (hasBarcodeDetector) {
+    await _startNativeBarcodeScanner(readerEl);
+  } else {
+    await _startHtml5QrcodeScanner(readerEl);
+  }
+}
+
+/**
+ * Scanner menggunakan native BarcodeDetector API (Chrome Android 83+)
+ * Jauh lebih handal untuk QR code dari layar monitor PC
+ */
+async function _startNativeBarcodeScanner(containerEl) {
+  dbgLog('📷 Memulai Native BarcodeDetector scanner...');
+  try {
+    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+
+    // Buka kamera belakang dengan resolusi tinggi
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+    _nativeScannerStream = stream;
+
+    // Buat elemen video untuk tampilan kamera
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:14px;';
+    video.srcObject = stream;
+    containerEl.appendChild(video);
+    _nativeScannerVideo = video;
+
+    // Tunggu video siap
+    await new Promise((resolve) => {
+      video.onloadedmetadata = resolve;
+      setTimeout(resolve, 2000); // timeout fallback
+    });
+    await video.play().catch(e => console.warn('video.play() warning:', e));
+
+    // Buat canvas tersembunyi untuk capture frame
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    dbgLog('✅ Kamera native aktif! Mulai scan QR...');
+    console.log('[DBG] Native scanner: video size', video.videoWidth, 'x', video.videoHeight);
+
+    // Buat proxy object agar kompatibel dengan stopAllCameras()
+    html5QrcodeScanner = {
+      getState: () => 2, // 2 = SCANNING
+      stop: async () => {
+        clearInterval(_nativeScannerInterval);
+        _nativeScannerInterval = null;
+        if (_nativeScannerStream) {
+          _nativeScannerStream.getTracks().forEach(t => t.stop());
+          _nativeScannerStream = null;
+        }
+        if (_nativeScannerVideo) {
+          _nativeScannerVideo.srcObject = null;
+          _nativeScannerVideo = null;
+        }
+        console.log('[DBG] Native scanner: stopped');
+      },
+      pause: (stopVideo) => {
+        clearInterval(_nativeScannerInterval);
+        _nativeScannerInterval = null;
+        if (stopVideo && _nativeScannerVideo) _nativeScannerVideo.pause();
+        console.log('[DBG] Native scanner: paused');
+      },
+      clear: () => {
+        if (containerEl) containerEl.innerHTML = '';
+      }
+    };
+
+    // Loop scan setiap 125ms (~8fps)
+    let failCount = 0, failTimer = null;
+    _nativeScannerInterval = setInterval(async () => {
+      if (isProcessingQRScan) return;
+      if (!video.videoWidth || !video.videoHeight) return;
+
+      // Count failures untuk debug
+      failCount++;
+      if (!failTimer) {
+        failTimer = setTimeout(() => {
+          dbgLog(`🔄 Native scan attempts: ${failCount} / 2 detik`);
+          const el = document.getElementById('dbgScannerState');
+          if (el) el.innerText = `📷 native scanner aktif | attempts: ${failCount}`;
+          failCount = 0; failTimer = null;
+        }, 2000);
+      }
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+
+      try {
+        const barcodes = await detector.detect(canvas);
+        if (barcodes && barcodes.length > 0) {
+          const rawValue = barcodes[0].rawValue;
+          console.log('[DBG] QR detected by BarcodeDetector:', rawValue);
+          await onQRScanSuccess(rawValue, barcodes[0]);
+        }
+      } catch (e) {
+        // Kegagalan deteksi adalah normal saat tidak ada QR di frame
+      }
+    }, 125);
+
+  } catch (err) {
+    dbgLog(`❌ Native scanner error: ${err.message}`);
+    console.error('[DBG] _startNativeBarcodeScanner error:', err);
+    // Fallback ke Html5Qrcode
+    dbgLog('⬇️ Fallback ke Html5Qrcode...');
+    await _startHtml5QrcodeScanner(containerEl);
+  }
+}
+
+/**
+ * Scanner menggunakan Html5Qrcode (ZXing) — sebagai fallback
+ */
+async function _startHtml5QrcodeScanner(containerEl) {
+  dbgLog('📷 Memulai Html5Qrcode (ZXing) scanner...');
+
   const config = {
-    fps: 8, // FPS lebih rendah = kualitas frame lebih baik per attempt
-    // HAPUS qrbox — scan SELURUH frame kamera untuk maksimal keberhasilan decode
+    fps: 8,
     aspectRatio: 4 / 3,
-    experimentalFeatures: {
-      useBarCodeDetectorIfSupported: true // gunakan native BarcodeDetector API jika tersedia
-    }
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true }
   };
-  dbgLog('\u2699\ufe0f Config: fps=8, full-frame scan (tanpa qrbox)');
-  console.log('[DBG] startQRScanner: config tanpa qrbox, fps=8');
 
   try {
-    // Dapatkan daftar kamera
     let cameraId = null;
     try {
       const devices = await Html5Qrcode.getCameras();
       if (devices && devices.length > 0) {
-        // Cari kamera belakang
-        const backCamera = devices.find(device =>
-          device.label.toLowerCase().includes('back') ||
-          device.label.toLowerCase().includes('rear') ||
-          device.label.toLowerCase().includes('environment') ||
-          device.label.toLowerCase().includes('0')
+        const backCamera = devices.find(d =>
+          d.label.toLowerCase().includes('back') ||
+          d.label.toLowerCase().includes('rear') ||
+          d.label.toLowerCase().includes('environment') ||
+          d.label.toLowerCase().includes('0')
         );
         cameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
-        console.log("Menggunakan kamera:", cameraId);
       }
-    } catch (camErr) {
-      console.warn("Pemeriksaan daftar kamera gagal:", camErr);
-    }
-
-    // Buat instance scanner baru
-    const readerElement = document.getElementById('reader');
-    if (!readerElement) {
-      throw new Error("Element #reader tidak ditemukan");
-    }
+    } catch (e) { console.warn("getCameras error:", e); }
 
     html5QrcodeScanner = new Html5Qrcode("reader");
 
-    // Mulai scanning
     if (cameraId) {
-      await html5QrcodeScanner.start(
-        cameraId,
-        config,
-        onQRScanSuccess,
-        onQRScanFailure
-      );
+      await html5QrcodeScanner.start(cameraId, config, onQRScanSuccess, onQRScanFailure);
     } else {
-      await html5QrcodeScanner.start(
-        { facingMode: "environment" },
-        config,
-        onQRScanSuccess,
-        onQRScanFailure
-      );
+      await html5QrcodeScanner.start({ facingMode: "environment" }, config, onQRScanSuccess, onQRScanFailure);
     }
-    console.log("Kamera QR scanner aktif.");
+    dbgLog('✅ Html5Qrcode (ZXing) aktif');
+    console.log("Kamera QR scanner aktif (Html5Qrcode).");
   } catch (err1) {
-    console.warn("Gagal membuka kamera scanner via deviceId/facingMode, mencoba fallback...", err1);
+    console.warn("Gagal Html5Qrcode primary, mencoba fallback facingMode...", err1);
     try {
-      // Bersihkan lagi
       await stopAllCameras();
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      const readerElement = document.getElementById('reader');
-      if (readerElement) {
-        readerElement.innerHTML = '';
-      }
-
+      await new Promise(r => setTimeout(r, 300));
+      const el = document.getElementById('reader');
+      if (el) el.innerHTML = '';
       html5QrcodeScanner = new Html5Qrcode("reader");
-      await html5QrcodeScanner.start(
-        { facingMode: "user" },
-        config,
-        onQRScanSuccess,
-        onQRScanFailure
-      );
-      console.log("Kamera QR scanner aktif (fallback user).");
+      await html5QrcodeScanner.start({ facingMode: "user" }, config, onQRScanSuccess, onQRScanFailure);
+      dbgLog('✅ Html5Qrcode fallback (facingMode user) aktif');
     } catch (err2) {
-      console.error("Gagal total menyalakan kamera scanner:", err2);
-      showScanResult("Gagal membuka kamera: " + (err2.message || err2.toString()) + ". Pastikan izin kamera aktif dan tidak ada aplikasi lain yang menggunakan kamera.", "error");
+      console.error("Gagal total menyalakan kamera:", err2);
+      dbgLog(`❌ Gagal buka kamera: ${err2.message}`);
+      showScanResult("Gagal membuka kamera: " + (err2.message || err2.toString()), "error");
     }
   }
 }
+
 
 /**
  * Callback ketika QR Code berhasil di-scan
