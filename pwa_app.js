@@ -505,7 +505,25 @@ function submitAttendance() {
     challengeText.innerText = "⏳ Memproses lokasi GPS...";
   }
 
-  function proceedWithPayload(lat, lng) {
+  function proceedWithPayload(lat, lng, accuracy) {
+    if (lat === 0 && lng === 0) {
+      showScanResult("❌ GPS HP Anda tidak aktif. Mohon aktifkan Lokasi/GPS presisi tinggi di HP Anda.", "error");
+      setTimeout(() => {
+        resetToScanStep1();
+        startQRScanner();
+      }, 4000);
+      return;
+    }
+
+    if (accuracy > 150) {
+      showScanResult("❌ Akurasi GPS tidak memadai (" + Math.round(accuracy) + " meter). Matikan Fake GPS / aktifkan Lokasi Presisi di HP Anda.", "error");
+      setTimeout(() => {
+        resetToScanStep1();
+        startQRScanner();
+      }, 4000);
+      return;
+    }
+
     const payload = {
       nrp: localNRP,
       outlet: scannedQRData.outlet || scannedQRData.outlet_id,
@@ -513,11 +531,12 @@ function submitAttendance() {
       timestamp: scannedQRData.timestamp,
       latitude: lat,
       longitude: lng,
+      accuracy: Math.round(accuracy || 0),
       face_verified: faceVerified,
       liveness_passed: livenessPassed,
       attendance_type: "CLOCK_IN",
       device_id: getOrCreateDeviceId(),
-      notes: "Absen QR via PWA (Liveness Passed)"
+      notes: "Absen QR via PWA (Akurasi GPS: " + Math.round(accuracy || 0) + "m)"
     };
 
     if (navigator.onLine) {
@@ -527,27 +546,25 @@ function submitAttendance() {
     }
   }
 
-  // Ambil lokasi GPS HP dengan fallback akurasi
+  // Ambil lokasi GPS HP dengan validasi presisi tinggi
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        proceedWithPayload(position.coords.latitude, position.coords.longitude);
+        const accuracy = position.coords ? (position.coords.accuracy || 0) : 0;
+        proceedWithPayload(position.coords.latitude, position.coords.longitude, accuracy);
       },
       (error) => {
-        console.warn("High accuracy GPS timeout/error, menggunakan fallback low accuracy:", error);
-        navigator.geolocation.getCurrentPosition(
-          (pos) => proceedWithPayload(pos.coords.latitude, pos.coords.longitude),
-          (err2) => {
-            console.warn("GPS lokasi tidak tersedia, mengirim koordinat default 0,0:", err2);
-            proceedWithPayload(0, 0);
-          },
-          { enableHighAccuracy: false, timeout: 4000 }
-        );
+        console.warn("High accuracy GPS error:", error);
+        showScanResult("❌ Gagal mendapatkan lokasi GPS HP Anda. Pastikan izin lokasi aktif dan tidak menggunakan Fake GPS.", "error");
+        setTimeout(() => {
+          resetToScanStep1();
+          startQRScanner();
+        }, 4000);
       },
-      { enableHighAccuracy: true, timeout: 5000 }
+      { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
     );
   } else {
-    proceedWithPayload(0, 0);
+    showScanResult("❌ Fitur Geolocation/GPS tidak didukung pada browser ini.", "error");
   }
 }
 
