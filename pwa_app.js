@@ -372,17 +372,29 @@ async function switchView(viewName) {
  */
 async function openCameraStream(facingMode = "user") {
   let stream = null;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facingMode }
-    });
-  } catch (err1) {
-    console.warn("Mencoba getUserMedia dengan facingMode " + facingMode + " gagal, mencoba video: true fallback...", err1);
+  const constraintsPrimary = { video: { facingMode: { ideal: facingMode } } };
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    } catch (err2) {
-      console.error("Gagal membuka kamera:", err2);
-      throw err2;
+      stream = await navigator.mediaDevices.getUserMedia(constraintsPrimary);
+      return stream;
+    } catch (err1) {
+      console.warn(`[DBG] openCameraStream attempt ${attempt} failed (${err1.name}):`, err1);
+
+      // Jika AbortError / NotReadableError, berikan jeda 500ms agar hardware rilis
+      if (attempt < 3 && (err1.name === 'AbortError' || err1.name === 'NotReadableError' || err1.name === 'DOMException')) {
+        await new Promise(r => setTimeout(r, 500));
+        continue;
+      }
+
+      if (attempt === 2) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          return stream;
+        } catch (err2) { }
+      }
+
+      if (attempt === 3) throw err1;
     }
   }
   return stream;
@@ -429,15 +441,14 @@ async function stopAllCameras() {
 
   if (html5QrcodeScanner) {
     try {
-      // Coba deteksi state scanning dengan beberapa cara
       let isScanning = false;
       try {
         if (html5QrcodeScanner.getState) {
-          isScanning = html5QrcodeScanner.getState() === 2; // Html5QrcodeScannerState.SCANNING = 2
+          isScanning = html5QrcodeScanner.getState() === 2;
         } else if (typeof html5QrcodeScanner.isScanning === 'boolean') {
           isScanning = html5QrcodeScanner.isScanning;
         } else {
-          isScanning = true; // Asumsikan sedang scanning jika tidak bisa deteksi
+          isScanning = true;
         }
       } catch (stateErr) {
         isScanning = true;
@@ -459,7 +470,6 @@ async function stopAllCameras() {
     if (readerEl) {
       console.log('[DBG] stopAllCameras: membersihkan #reader, children sebelum clear:', readerEl.children.length);
       readerEl.innerHTML = '';
-      // Clone dan replace untuk menghapus semua event listener
       const newReader = readerEl.cloneNode(false);
       readerEl.parentNode.replaceChild(newReader, readerEl);
       newReader.id = 'reader';
@@ -480,8 +490,8 @@ async function stopAllCameras() {
     });
   } catch (e) { }
 
-  // Beri jeda 300ms agar driver hardware kamera OS rilis penuh
-  await new Promise(r => setTimeout(r, 300));
+  // Beri jeda 500ms agar driver hardware kamera OS rilis penuh
+  await new Promise(r => setTimeout(r, 500));
 }
 
 /**
@@ -741,13 +751,26 @@ async function startQRScanner() {
 async function _startJsQRScanner(containerEl) {
   dbgLog('⚡ Memulai jsQR Scanner (High-Precision Canvas Mode)...');
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
+    let stream = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+        break;
+      } catch (err) {
+        console.warn(`[DBG] jsQR scanner getUserMedia attempt ${attempt} (${err.name}):`, err);
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, 500));
+        } else {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        }
       }
-    });
+    }
     _nativeScannerStream = stream;
 
     const video = document.createElement('video');
@@ -848,14 +871,26 @@ async function _startNativeBarcodeScanner(containerEl) {
   try {
     const detector = new BarcodeDetector({ formats: ['qr_code'] });
 
-    // Buka kamera belakang dengan resolusi tinggi
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
+    let stream = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+        break;
+      } catch (err) {
+        console.warn(`[DBG] Native scanner getUserMedia attempt ${attempt} (${err.name}):`, err);
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, 500));
+        } else {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        }
       }
-    });
+    }
     _nativeScannerStream = stream;
 
     // Buat elemen video untuk tampilan kamera
@@ -1599,6 +1634,16 @@ async function sendToGAS(payload) {
     }
 
     saveLocalAttendanceStatus(payload.nrp, payload.attendance_type);
+
+    // Broadcast event absensi ke outlet_display.html (Auto Refresh Setelah Clock In)
+    try {
+      localStorage.setItem('attendance_last_event', JSON.stringify({ type: payload.attendance_type, nrp: payload.nrp, timestamp: Date.now() }));
+      if ('BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('attendance_channel');
+        bc.postMessage({ type: 'ATTENDANCE_SUCCESS', payload: payload });
+        bc.close();
+      }
+    } catch (e) { }
 
     const successMsg = resData && resData.message ? resData.message : ("Absensi sukses dikirim! Terima kasih.");
     if (challengeText) challengeText.innerText = "✅ " + successMsg;
