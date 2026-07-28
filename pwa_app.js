@@ -303,63 +303,66 @@ async function onQRScanSuccess(decodedText, decodedResult) {
   try {
     console.log("QR Code terdeteksi:", decodedText);
 
-    // 1. Periksa jika decodedText berupa URL atau JSON string
-    if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
-      const url = new URL(decodedText);
-      const outlet = url.searchParams.get('outlet') || url.searchParams.get('outlet_id');
-      const timestamp = url.searchParams.get('timestamp');
-      const totpToken = url.searchParams.get('totp_token');
-      
-      if (!outlet || !totpToken || !timestamp) {
-        throw new Error("Parameter URL QR Code tidak lengkap");
+    let outlet = null;
+    let timestamp = null;
+    let totpToken = null;
+
+    if (decodedText.includes("outlet=") && decodedText.includes("totp_token=")) {
+      // 1. Parsal URL atau query string
+      let searchParams = null;
+      if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
+        const url = new URL(decodedText);
+        searchParams = url.searchParams;
+      } else {
+        const queryString = decodedText.includes("?") ? decodedText.split("?")[1] : decodedText;
+        searchParams = new URLSearchParams(queryString);
       }
-      
-      scannedQRData = {
-        outlet: outlet,
-        timestamp: Number(timestamp),
-        totp_token: totpToken
-      };
 
-      // Redirect / update URL browser ke link QR Code yang baru di-scan
-      try {
-        window.history.replaceState({}, '', decodedText);
-      } catch(e){}
-
+      outlet = searchParams.get('outlet') || searchParams.get('outlet_id');
+      timestamp = searchParams.get('timestamp');
+      totpToken = searchParams.get('totp_token');
     } else {
-      // Fallback format JSON
-      scannedQRData = JSON.parse(decodedText);
-      const outletVal = scannedQRData.outlet || scannedQRData.outlet_id;
-      
-      if (!outletVal || !scannedQRData.totp_token || !scannedQRData.timestamp) {
-        throw new Error("Format JSON QR Code tidak sesuai");
-      }
-      scannedQRData.outlet = outletVal;
+      // 2. Fallback format JSON
+      try {
+        const json = JSON.parse(decodedText);
+        outlet = json.outlet || json.outlet_id;
+        timestamp = json.timestamp;
+        totpToken = json.totp_token;
+      } catch(e){}
     }
+
+    if (!outlet || !totpToken || !timestamp) {
+      throw new Error("Parameter QR Code tidak lengkap atau format tidak sesuai.");
+    }
+
+    scannedQRData = {
+      outlet: outlet,
+      timestamp: Number(timestamp),
+      totp_token: totpToken
+    };
 
     console.log("QR Code baru berhasil diproses:", scannedQRData);
 
+    // Perbarui URL browser jika berupa tautan HTTP/HTTPS
+    if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
+      try {
+        window.history.replaceState({}, '', decodedText);
+      } catch(e){}
+    }
+
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP) {
-      // Matikan scanner secara bersih agar tidak mentrigger callback berulang
-      if (html5QrcodeScanner) {
-        try {
-          if (html5QrcodeScanner.isScanning) {
-            html5QrcodeScanner.stop().catch(e => console.log(e));
-          }
-        } catch(e){}
-      }
+      await stopAllCameras();
       openSyncOverlay(); // Tampilkan overlay registrasi profil Karyawan
       return;
     }
 
-    // 3. Pindah langsung ke Langkah 2: Deteksi Wajah & Liveness dengan QR Code baru
-    setTimeout(() => {
-      startLivenessCamera();
-    }, 50);
+    // 3. Hentikan scanner & buka langsung Kamera Liveness Langkah 2
+    await startLivenessCamera();
 
   } catch (error) {
     console.error("Format QR Code tidak valid:", error);
-    showScanResult("Format QR Code salah. Pastikan men-scan QR absensi resmi di layar PC outlet.", "error");
+    showScanResult("Format QR Code tidak sesuai. Pastikan memindai QR Code absensi resmi pada layar PC outlet.", "error");
   }
 }
 
