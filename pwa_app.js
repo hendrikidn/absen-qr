@@ -220,7 +220,7 @@ async function openCameraStream(facingMode = "user") {
 
 /**
  * Menghentikan seluruh stream kamera (QR Scanner, Kamera Liveness, Kamera Registrasi)
- * dan membebaskan hardware kamera secara bersih.
+ * dan membebaskan hardware kamera secara bersih dari OS driver.
  */
 async function stopAllCameras() {
   if (scanStream) {
@@ -247,12 +247,28 @@ async function stopAllCameras() {
       if (isScanning) {
         await html5QrcodeScanner.stop().catch(err => console.warn("Scanner stop warning:", err));
       }
-      try { html5QrcodeScanner.clear(); } catch(err){}
+      try { await html5QrcodeScanner.clear(); } catch(err){}
     } catch (e) {
       console.warn("Cleanup scanner instance warning:", e);
     }
     html5QrcodeScanner = null;
   }
+
+  // Hentikan seluruh stream yang masih menempel pada elemen video di DOM
+  try {
+    const videoElements = document.querySelectorAll('video');
+    videoElements.forEach(v => {
+      if (v.srcObject && v.srcObject.getTracks) {
+        v.srcObject.getTracks().forEach(track => {
+          try { track.stop(); } catch(e){}
+        });
+        v.srcObject = null;
+      }
+    });
+  } catch(e){}
+
+  // Beri jeda 150ms agar driver hardware kamera OS rilis penuh
+  await new Promise(r => setTimeout(r, 150));
 }
 
 /**
@@ -269,19 +285,43 @@ async function startQRScanner() {
     aspectRatio: 1.333333 // 4:3 matching viewport (full frame scanning)
   };
 
-  // 1. Coba kamera belakang (environment)
   try {
+    let cameraId = null;
+    try {
+      const devices = await Html5Qrcode.getCameras();
+      if (devices && devices.length > 0) {
+        const backCamera = devices.find(device => 
+          device.label.toLowerCase().includes('back') || 
+          device.label.toLowerCase().includes('rear') || 
+          device.label.toLowerCase().includes('environment') ||
+          device.label.toLowerCase().includes('0')
+        );
+        cameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
+      }
+    } catch(camErr) {
+      console.warn("Pemeriksaan daftar kamera gagal:", camErr);
+    }
+
     html5QrcodeScanner = new Html5Qrcode("reader");
-    await html5QrcodeScanner.start(
-      { facingMode: "environment" },
-      config,
-      onQRScanSuccess,
-      onQRScanFailure
-    );
-    console.log("Kamera QR scanner aktif (kamera belakang).");
+
+    if (cameraId) {
+      await html5QrcodeScanner.start(
+        cameraId,
+        config,
+        onQRScanSuccess,
+        onQRScanFailure
+      );
+    } else {
+      await html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        config,
+        onQRScanSuccess,
+        onQRScanFailure
+      );
+    }
+    console.log("Kamera QR scanner aktif.");
   } catch (err1) {
-    console.warn("Gagal membuka kamera belakang, mencoba kamera depan/webcam:", err1);
-    // 2. Fallback: Re-instantiate Html5Qrcode baru & coba kamera user/webcam
+    console.warn("Gagal membuka kamera scanner via deviceId/facingMode, mencoba fallback...", err1);
     try {
       try { await stopAllCameras(); } catch(e){}
       html5QrcodeScanner = new Html5Qrcode("reader");
@@ -291,10 +331,10 @@ async function startQRScanner() {
         onQRScanSuccess,
         onQRScanFailure
       );
-      console.log("Kamera QR scanner aktif (kamera user/webcam).");
+      console.log("Kamera QR scanner aktif (fallback user).");
     } catch (err2) {
       console.error("Gagal total menyalakan kamera scanner:", err2);
-      showScanResult("Gagal membuka kamera: " + (err2.message || err2.toString()) + ". Pastikan izin kamera diizinkan di browser Anda.", "error");
+      showScanResult("Gagal membuka kamera: " + (err2.message || err2.toString()) + ". Tutup aplikasi lain yang sedang menggunakan kamera.", "error");
     }
   }
 }
