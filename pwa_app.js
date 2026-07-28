@@ -18,6 +18,7 @@ let latestLiveDescriptor = null; // Deskriptor wajah live dari kamera (dikirim l
 
 // Variabel Data dari Hasil Scan QR Code PC
 let scannedQRData = null;
+let isProcessingQRScan = false;
 
 // Keadaan Liveness Check
 let blinkCount = 0;
@@ -68,12 +69,10 @@ function checkURLParameters() {
       totp_token: totpToken
     };
     console.log("Parameter URL terdeteksi dari kamera bawaan HP:", scannedQRData);
-    
-    // Bersihkan parameter URL dari address bar agar tidak terjebak di QR lama saat reload/rescan
+
+    // Bersihkan parameter query URL dari address bar agar tidak membingungkan saat navigasi/tab switch
     try {
-      if (window.location.search) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
+      window.history.replaceState({}, '', window.location.pathname);
     } catch(e){}
     
     // Pastikan user terdaftar di ponsel ini
@@ -261,14 +260,6 @@ async function stopAllCameras() {
     html5QrcodeScanner = null;
   }
 
-  // Bersihkan elemen anak pada container scanner
-  try {
-    const readerEl = document.getElementById('reader');
-    if (readerEl) {
-      readerEl.innerHTML = "";
-    }
-  } catch(e){}
-
   // Hentikan seluruh stream yang masih menempel pada elemen video di DOM
   try {
     const videoElements = document.querySelectorAll('video');
@@ -281,9 +272,6 @@ async function stopAllCameras() {
       }
     });
   } catch(e){}
-
-  // Reset bendera pemrosesan QR agar pemindaian ulang selalu diizinkan
-  isProcessingQR = false;
 
   // Beri jeda 150ms agar driver hardware kamera OS rilis penuh
   await new Promise(r => setTimeout(r, 150));
@@ -298,29 +286,9 @@ async function startQRScanner() {
   // Tampilkan Step 1, Sembunyikan Step 2
   resetToScanStep1();
 
-  // Beri waktu 50ms agar DOM layout #reader ter-render sempurna dengan ukuran aktual
-  await new Promise(r => setTimeout(r, 50));
-
-  const readerEl = document.getElementById('reader');
-  if (readerEl) {
-    readerEl.innerHTML = "";
-  }
-
   const config = { 
     fps: 15,
-    qrbox: (viewfinderWidth, viewfinderHeight) => {
-      const w = (viewfinderWidth && viewfinderWidth > 50) ? viewfinderWidth : (readerEl ? readerEl.clientWidth : 280) || 280;
-      const h = (viewfinderHeight && viewfinderHeight > 50) ? viewfinderHeight : (readerEl ? readerEl.clientHeight : 280) || 280;
-      const minEdge = Math.min(w, h);
-      const qrboxSize = Math.max(200, Math.floor(minEdge * 0.85));
-      return {
-        width: qrboxSize,
-        height: qrboxSize
-      };
-    },
-    experimentalFeatures: {
-      useBarCodeDetectorIfSupported: true
-    }
+    aspectRatio: 1.333333 // 4:3 matching viewport (full frame scanning)
   };
 
   try {
@@ -340,7 +308,6 @@ async function startQRScanner() {
       console.warn("Pemeriksaan daftar kamera gagal:", camErr);
     }
 
-    if (readerEl) readerEl.innerHTML = "";
     html5QrcodeScanner = new Html5Qrcode("reader");
 
     if (cameraId) {
@@ -363,7 +330,6 @@ async function startQRScanner() {
     console.warn("Gagal membuka kamera scanner via deviceId/facingMode, mencoba fallback...", err1);
     try {
       try { await stopAllCameras(); } catch(e){}
-      if (readerEl) readerEl.innerHTML = "";
       html5QrcodeScanner = new Html5Qrcode("reader");
       await html5QrcodeScanner.start(
         { facingMode: "user" },
@@ -379,91 +345,85 @@ async function startQRScanner() {
   }
 }
 
-/**
- * Parsal Payload QR Code (Mendukung URL, Query String, dan JSON)
- */
-function parseQRPayload(decodedText) {
-  if (!decodedText || typeof decodedText !== 'string') {
-    return {
-      outlet: localStorage.getItem('outlet') || 'Outlet Tebet',
-      timestamp: Math.floor(Date.now() / 1000),
-      totp_token: 'valid'
-    };
-  }
+async function onQRScanSuccess(decodedText, decodedResult) {
+  if (isProcessingQRScan) return;
 
-  let outlet = localStorage.getItem('outlet') || 'Outlet Tebet';
-  let timestamp = Math.floor(Date.now() / 1000);
-  let totpToken = 'valid';
-
-  // 1. Parsal jika berupa URL atau Query String
   try {
-    if (decodedText.includes("outlet=") || decodedText.includes("totp_token=") || decodedText.startsWith("http")) {
+    console.log("QR Code terdeteksi:", decodedText);
+
+    let outlet = null;
+    let timestamp = null;
+    let totpToken = null;
+
+    if (decodedText.includes("outlet=") && decodedText.includes("totp_token=")) {
+      // 1. Parsal URL atau query string
       let searchParams = null;
       if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
         const url = new URL(decodedText);
         searchParams = url.searchParams;
       } else {
-        const queryString = decodedText.includes("?") ? decodedText.substring(decodedText.indexOf("?") + 1) : decodedText;
+        const queryString = decodedText.includes("?") ? decodedText.split("?")[1] : decodedText;
         searchParams = new URLSearchParams(queryString);
       }
 
-      outlet = searchParams.get('outlet') || searchParams.get('outlet_id') || searchParams.get('outlet_name') || outlet;
-      timestamp = searchParams.get('timestamp') || searchParams.get('time') || searchParams.get('ts') || timestamp;
-      totpToken = searchParams.get('totp_token') || searchParams.get('totp') || searchParams.get('token') || totpToken;
+      outlet = searchParams.get('outlet') || searchParams.get('outlet_id');
+      timestamp = searchParams.get('timestamp');
+      totpToken = searchParams.get('totp_token');
     } else {
+      // 2. Fallback format JSON
       try {
         const json = JSON.parse(decodedText);
-        outlet = json.outlet || json.outlet_id || json.outlet_name || outlet;
-        timestamp = json.timestamp || json.time || json.ts || timestamp;
-        totpToken = json.totp_token || json.totp || json.token || totpToken;
-      } catch(e) {}
+        outlet = json.outlet || json.outlet_id;
+        timestamp = json.timestamp;
+        totpToken = json.totp_token;
+      } catch(e){}
     }
-  } catch(e) {}
 
-  return {
-    outlet: decodeURIComponent(outlet).trim(),
-    timestamp: Number(timestamp) || Math.floor(Date.now() / 1000),
-    totp_token: String(totpToken).trim()
-  };
-}
+    if (!outlet || !totpToken || !timestamp) {
+      throw new Error("Parameter QR Code tidak lengkap atau format tidak sesuai.");
+    }
 
-let isProcessingQR = false;
+    isProcessingQRScan = true;
 
-async function onQRScanSuccess(decodedText, decodedResult) {
-  if (isProcessingQR) return;
-  isProcessingQR = true;
+    scannedQRData = {
+      outlet: outlet,
+      timestamp: Number(timestamp),
+      totp_token: totpToken
+    };
 
-  try {
-    console.log("Raw QR Code terdeteksi:", decodedText);
-
-    scannedQRData = parseQRPayload(decodedText);
-    console.log("QR Code valid berhasil diproses:", scannedQRData);
-
-    showScanResult("✅ QR Code Terbaca! Membuka verifikasi wajah...", "success");
-
-    // Bersihkan parameter URL dari address bar
-    try {
-      if (window.location.search) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    } catch(e){}
-
-    await stopAllCameras();
-    isProcessingQR = false;
+    console.log("QR Code baru berhasil diproses:", scannedQRData);
 
     const localNRP = localStorage.getItem('attendance_registered_nrp');
-    if (!localNRP) {
-      openSyncOverlay(); // Tampilkan overlay registrasi profil Karyawan jika belum terhubung
-      return;
+
+    // Hentikan penanganan callback scanner secara halus
+    if (html5QrcodeScanner) {
+      try {
+        if (html5QrcodeScanner.isScanning) {
+          html5QrcodeScanner.pause(true);
+        }
+      } catch(e){}
     }
 
-    // 3. Pindah langsung ke Kamera Liveness Langkah 2
-    await startLivenessCamera();
+    // Pindahkan transisi eksekusi kamera ke event loop baru agar tidak melempar exception di dalam callback scanner
+    setTimeout(async () => {
+      try {
+        await stopAllCameras();
+        if (!localNRP) {
+          openSyncOverlay();
+        } else {
+          await startLivenessCamera();
+        }
+      } catch(err) {
+        console.error("Transisi ke Langkah 2 gagal:", err);
+      } finally {
+        isProcessingQRScan = false;
+      }
+    }, 50);
 
   } catch (error) {
-    console.error("Gagal memproses QR Code:", error);
-    showScanResult("Gagal membaca QR Code: " + (error.message || error.toString()), "error");
-    isProcessingQR = false;
+    isProcessingQRScan = false;
+    console.error("Format QR Code tidak valid:", error);
+    showScanResult("Format QR Code tidak sesuai. Pastikan memindai QR Code absensi resmi pada layar PC outlet.", "error");
   }
 }
 
@@ -481,9 +441,7 @@ function cancelScan() {
  * Memulai ulang scanner QR Code pada Langkah 1 (Bersihkan data QR lama & baca ulang QR baru)
  */
 async function restartQRScanner() {
-  scannedQRData = null;
-  isProcessingQR = false;
-
+  // Bersihkan parameter URL lama dari browser agar tidak terbaca ulang
   try {
     if (window.location.search) {
       window.history.replaceState({}, '', window.location.pathname);
@@ -492,39 +450,11 @@ async function restartQRScanner() {
 
   const resultDiv = document.getElementById('scanResult');
   if (resultDiv) resultDiv.style.display = 'none';
-
-  showScanResult("⏳ Memulai ulang scanner QR Code...", "success");
+  showScanResult("⏳ Memulai ulang kamera QR Code scanner...", "success");
   await startQRScanner();
-  
   setTimeout(() => {
-    if (resultDiv && resultDiv.innerText.includes("Memulai ulang")) {
-      resultDiv.style.display = 'none';
-    }
-  }, 1200);
-}
-
-/**
- * Paksa Lanjut ke Langkah 2 (Verifikasi Wajah)
- */
-async function forceProceedToStep2() {
-  if (!scannedQRData) {
-    scannedQRData = {
-      outlet: localStorage.getItem('outlet') || 'Outlet Tebet',
-      timestamp: Math.floor(Date.now() / 1000),
-      totp_token: 'manual_proceed'
-    };
-  }
-  showScanResult("✅ Membuka verifikasi wajah...", "success");
-  await stopAllCameras();
-  isProcessingQR = false;
-
-  const localNRP = localStorage.getItem('attendance_registered_nrp');
-  if (!localNRP) {
-    openSyncOverlay();
-    return;
-  }
-
-  await startLivenessCamera();
+    if (resultDiv) resultDiv.style.display = 'none';
+  }, 1500);
 }
 
 let baselineSmileRatio = null;
@@ -534,7 +464,6 @@ function resetToScanStep1() {
   document.getElementById('scanStep2').style.display = 'none';
   document.getElementById('scanResult').style.display = 'none';
   scannedQRData = null;
-  isProcessingQR = false;
   livenessPassed = false;
   faceVerified = false;
   baselineSmileRatio = null;
