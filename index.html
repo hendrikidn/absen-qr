@@ -135,6 +135,53 @@
         opacity: 1;
         transform: translateY(0);
       }
+    /* Attendance Type Selection Pills */
+    .attendance-type-container {
+      margin-bottom: 16px;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .attendance-type-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .type-pill {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      padding: 10px 8px;
+      border-radius: 10px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      outline: none;
+    }
+
+    .type-pill:hover {
+      background: rgba(47, 62, 86, 0.9);
+      color: var(--text-main);
+    }
+
+    .type-pill.active {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(79, 70, 229, 0.4));
+      border-color: #818cf8;
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+      transform: translateY(-1px);
+    }
+
+    .pill-icon {
+      font-size: 0.9rem;
     }
 
     /* Input elements styling */
@@ -564,6 +611,27 @@
 
     <!-- VIEW 1: SCAN ABSENSI (DEFAULT) -->
     <div id="viewScan" class="view-screen active">
+      <!-- Mode Kehadiran (Clock In, Start Break, Stop Break, Clock Out) -->
+      <div class="attendance-type-container">
+        <label style="font-size:0.8rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:8px; text-align:center;">
+          Pilih Jenis Absensi:
+        </label>
+        <div class="attendance-type-grid">
+          <button type="button" class="type-pill active" id="pill_CLOCK_IN" onclick="setAttendanceType('CLOCK_IN')">
+            <span class="pill-icon">🟢</span> Masuk
+          </button>
+          <button type="button" class="type-pill" id="pill_START_BREAK" onclick="setAttendanceType('START_BREAK')">
+            <span class="pill-icon">☕</span> Mulai Istirahat
+          </button>
+          <button type="button" class="type-pill" id="pill_STOP_BREAK" onclick="setAttendanceType('STOP_BREAK')">
+            <span class="pill-icon">🥪</span> Selesai Istirahat
+          </button>
+          <button type="button" class="type-pill" id="pill_CLOCK_OUT" onclick="setAttendanceType('CLOCK_OUT')">
+            <span class="pill-icon">🔴</span> Pulang
+          </button>
+        </div>
+      </div>
+
       <div id="scanStep1">
         <label>Langkah 1: Scan QR Code di Monitor PC</label>
         <div class="scanner-viewport">
@@ -653,7 +721,7 @@
     </div>
   </div>
 
-  <script src="pwa_app.js?v=4.7" type="text/javascript"></script>
+  <script src="pwa_app.js?v=4.8" type="text/javascript"></script>
 </body>
 
 </html>

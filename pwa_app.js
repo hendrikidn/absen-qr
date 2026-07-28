@@ -21,12 +21,49 @@ let scannedQRData = null;
 let isProcessingQRScan = false;
 let isRestartingScanner = false; // Guard agar tidak ada double-click race condition
 
-// Keadaan Liveness Check
-let blinkCount = 0;
-let isBlinked = false;
-let livenessPassed = false;
-let faceVerified = false;
-let baselineSmileRatio = null;
+// Mode Jenis Absensi (CLOCK_IN, START_BREAK, STOP_BREAK, CLOCK_OUT)
+let currentAttendanceType = 'CLOCK_IN';
+
+/**
+ * Mengubah Jenis Absensi yang Dipilih Pengguna
+ */
+function setAttendanceType(type) {
+  const allowed = ['CLOCK_IN', 'START_BREAK', 'STOP_BREAK', 'CLOCK_OUT'];
+  if (!allowed.includes(type)) type = 'CLOCK_IN';
+  currentAttendanceType = type;
+
+  allowed.forEach(t => {
+    const pill = document.getElementById('pill_' + t);
+    if (pill) {
+      if (t === type) {
+        pill.classList.add('active');
+      } else {
+        pill.classList.remove('active');
+      }
+    }
+  });
+
+  const labelMap = {
+    'CLOCK_IN': 'Masuk (Clock In)',
+    'START_BREAK': 'Mulai Istirahat (Start Break)',
+    'STOP_BREAK': 'Selesai Istirahat (Stop Break)',
+    'CLOCK_OUT': 'Pulang (Clock Out)'
+  };
+  console.log('[DBG] Jenis Absensi diubah ke:', type, '(' + labelMap[type] + ')');
+}
+
+/**
+ * Mendapatkan Label Bahasa Indonesia untuk Jenis Absensi
+ */
+function getAttendanceTypeLabel(type) {
+  const map = {
+    'CLOCK_IN': 'Masuk',
+    'START_BREAK': 'Mulai Istirahat',
+    'STOP_BREAK': 'Selesai Istirahat',
+    'CLOCK_OUT': 'Pulang'
+  };
+  return map[type] || 'Masuk';
+}
 
 // =========================================================================
 // DEBUG HELPERS
@@ -1283,6 +1320,9 @@ function submitAttendance(liveFaceDescriptor) {
       return;
     }
 
+    const activeType = currentAttendanceType || "CLOCK_IN";
+    const typeLabel = getAttendanceTypeLabel(activeType);
+
     const payload = {
       nrp: localNRP,
       outlet: scannedQRData.outlet || scannedQRData.outlet_id,
@@ -1294,9 +1334,10 @@ function submitAttendance(liveFaceDescriptor) {
       face_embedding: liveFaceDescriptor || latestLiveDescriptor,
       face_verified: faceVerified,
       liveness_passed: livenessPassed,
-      attendance_type: "CLOCK_IN",
+      attendance_type: activeType,
+      type: activeType,
       device_id: getOrCreateDeviceId(),
-      notes: "Absen QR via PWA (Akurasi GPS: " + Math.round(accuracy || 0) + "m)"
+      notes: "Absen QR (" + typeLabel + ") via PWA (Akurasi GPS: " + Math.round(accuracy || 0) + "m)"
     };
 
     if (navigator.onLine) {
@@ -1333,9 +1374,10 @@ function submitAttendance(liveFaceDescriptor) {
  */
 async function sendToGAS(payload) {
   const challengeText = document.getElementById('challengeText');
+  const typeLabel = getAttendanceTypeLabel(payload.attendance_type || payload.type);
   try {
-    if (challengeText) challengeText.innerText = "📤 Mengirim absensi ke server...";
-    showScanResult("Mengirim data ke server Google Sheets...", "success");
+    if (challengeText) challengeText.innerText = "📤 Mengirim absensi (" + typeLabel + ") ke server...";
+    showScanResult("Mengirim data Absensi (" + typeLabel + ") ke server Google Sheets...", "success");
 
     // Kirim POST tanpa no-cors untuk membaca balasan JSON resmi dari Google Apps Script
     const response = await fetch(GAS_URL, {
@@ -1370,8 +1412,8 @@ async function sendToGAS(payload) {
       return;
     }
 
-    if (challengeText) challengeText.innerText = "✅ Absensi Berhasil! Menutup halaman dalam 3 detik...";
-    const successMsg = resData && resData.message ? resData.message : ("Absensi sukses dikirim! Terima kasih, " + payload.nrp + ".");
+    if (challengeText) challengeText.innerText = "✅ Absensi " + typeLabel + " Berhasil! Menutup halaman dalam 3 detik...";
+    const successMsg = resData && resData.message ? resData.message : ("Absensi " + typeLabel + " sukses dikirim! Terima kasih, " + payload.nrp + ".");
     showScanResult("✅ " + successMsg, "success");
 
     // Berikan jeda 3 detik untuk memberikan konfirmasi ke pengguna, lalu tutup tab browser
