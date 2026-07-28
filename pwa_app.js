@@ -15,6 +15,7 @@ let html5QrcodeScanner = null;
 let scanStream = null;
 let regStream = null;
 let latestLiveDescriptor = null; // Deskriptor wajah live dari kamera (dikirim langsung ke server)
+let cachedOutletShifts = []; // Opsi shift jam kerja per outlet dari tab 'Outlet Schedule'
 
 // Variabel Data dari Hasil Scan QR Code PC
 let scannedQRData = null;
@@ -554,6 +555,11 @@ function showScanStep3() {
   if (step2) step2.style.display = 'none';
   if (step3) step3.style.display = 'block';
 
+  // Ambil daftar shift outlet dari server secara otomatis
+  if (scannedQRData && (scannedQRData.outlet || scannedQRData.outlet_id)) {
+    fetchOutletShifts(scannedQRData.outlet || scannedQRData.outlet_id);
+  }
+
   // Re-enable tombol-tombol menu
   const menuButtons = document.querySelectorAll('#scanStep3 .menu-card');
   menuButtons.forEach(btn => {
@@ -561,6 +567,111 @@ function showScanStep3() {
     btn.style.opacity = '1';
     btn.style.pointerEvents = 'auto';
   });
+}
+
+/**
+ * Mengunduh Opsi Shift Kerja untuk Outlet dari Tab 'Outlet Schedule'
+ */
+async function fetchOutletShifts(outletName) {
+  cachedOutletShifts = [];
+  if (!outletName || !GAS_URL) return;
+
+  const cleanOutlet = String(outletName).trim();
+  const cacheKey = 'outlet_shifts_' + cleanOutlet.toLowerCase();
+  
+  try {
+    const stored = localStorage.getItem(cacheKey);
+    if (stored) {
+      cachedOutletShifts = JSON.parse(stored);
+    }
+  } catch (e) { }
+
+  if (navigator.onLine) {
+    try {
+      const url = `${GAS_URL}?action=get_outlet_shifts&outlet=${encodeURIComponent(cleanOutlet)}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data && data.status === "success" && Array.isArray(data.message)) {
+        cachedOutletShifts = data.message;
+        localStorage.setItem(cacheKey, JSON.stringify(cachedOutletShifts));
+      }
+    } catch (err) {
+      console.warn("Gagal fetch shift outlet dari GAS:", err);
+    }
+  }
+}
+
+/**
+ * Menangani Klik Tombol Masuk Kerja (Clock In)
+ * Jika terdapat pilihan shift per outlet, tampilkan dialog pemilihan shift.
+ */
+function handleClockInClick() {
+  const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
+  const todayDateStr = new Date().toISOString().split('T')[0];
+  const localStatusKey = 'attendance_status_' + localNRP + '_' + todayDateStr;
+  let localStatus = {};
+  try {
+    localStatus = JSON.parse(localStorage.getItem(localStatusKey) || '{}');
+  } catch (e) { }
+
+  if (localStatus.hasClockIn) {
+    showScanResult("❌ Absensi Ditolak: Anda sudah melakukan Clock In hari ini (tidak dapat melakukan Clock In berulang kali).", "error");
+    return;
+  }
+
+  if (cachedOutletShifts && cachedOutletShifts.length > 1) {
+    openShiftOverlay();
+  } else if (cachedOutletShifts && cachedOutletShifts.length === 1) {
+    const defaultWH = cachedOutletShifts[0].working_hour || cachedOutletShifts[0].shift || "";
+    submitAttendance('CLOCK_IN', defaultWH);
+  } else {
+    submitAttendance('CLOCK_IN', '');
+  }
+}
+
+/**
+ * Membuka Modal Pemilihan Shift Kerja (Jadwal Outlet)
+ */
+function openShiftOverlay() {
+  const overlay = document.getElementById('shiftSelectOverlay');
+  const outletText = document.getElementById('shiftOutletName');
+  const container = document.getElementById('shiftOptionsContainer');
+
+  if (!overlay || !container) {
+    submitAttendance('CLOCK_IN', '');
+    return;
+  }
+
+  const outletName = (scannedQRData && (scannedQRData.outlet || scannedQRData.outlet_id)) || '';
+  if (outletText) {
+    outletText.innerText = "Outlet: " + outletName + " — Silakan pilih jam kerja Anda:";
+  }
+
+  container.innerHTML = '';
+  cachedOutletShifts.forEach(item => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn';
+    btn.style.cssText = 'background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); justify-content: space-between; padding: 14px 18px; color: var(--text-main); font-weight: 600; text-align: left; margin-bottom: 8px; width: 100%; border-radius: 12px; cursor: pointer;';
+
+    const shiftText = item.shift || 'Shift';
+    const hourText = item.working_hour || '';
+    const hourVal = hourText || shiftText;
+
+    btn.innerHTML = `<span style="font-weight: 600; font-size: 0.95rem;">${shiftText}</span><span style="font-size:0.85rem; color:var(--text-muted);">${hourText}</span>`;
+    btn.onclick = () => {
+      closeShiftOverlay();
+      submitAttendance('CLOCK_IN', hourVal);
+    };
+    container.appendChild(btn);
+  });
+
+  overlay.style.display = 'flex';
+}
+
+function closeShiftOverlay() {
+  const overlay = document.getElementById('shiftSelectOverlay');
+  if (overlay) overlay.style.display = 'none';
 }
 
 /**
@@ -1275,8 +1386,9 @@ function checkSmileLiveness(landmarks) {
 /**
  * Memproses Pengiriman Data Kehadiran (Online / Masuk Antrean Offline)
  * @param {string} attendanceType - "CLOCK_IN" | "START_BREAK" | "STOP_BREAK" | "CLOCK_OUT"
+ * @param {string} selectedWorkingHour - Opsi Jam Kerja dari Outlet Schedule (contoh: "08:00 - 17:00")
  */
-function submitAttendance(attendanceType = "CLOCK_IN") {
+function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "") {
   const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
   const challengeText = document.getElementById('challengeText');
 
@@ -1295,6 +1407,57 @@ function submitAttendance(attendanceType = "CLOCK_IN") {
       resetToScanStep1();
       startQRScanner();
     }, 3000);
+    return;
+  }
+
+  // Pre-validasi aturan absensi secara lokal
+  const todayDateStr = new Date().toISOString().split('T')[0];
+  const localStatusKey = 'attendance_status_' + localNRP + '_' + todayDateStr;
+  let localStatus = {};
+  try {
+    localStatus = JSON.parse(localStorage.getItem(localStatusKey) || '{}');
+  } catch (e) { }
+
+  const hasClockIn = localStatus.hasClockIn || false;
+  const lastType = localStatus.lastType || null;
+
+  let validationError = null;
+
+  if (attendanceType === "CLOCK_IN") {
+    if (hasClockIn) {
+      validationError = "Anda sudah melakukan Clock In hari ini (tidak dapat melakukan Clock In berulang kali).";
+    }
+  } else if (attendanceType === "START_BREAK") {
+    if (!hasClockIn) {
+      validationError = "Anda harus melakukan Clock In (Masuk Kerja) terlebih dahulu sebelum Start Break.";
+    } else if (lastType === "START_BREAK") {
+      validationError = "Anda sedang dalam masa Istirahat (tidak dapat Start Break berulang kali).";
+    } else if (lastType === "CLOCK_OUT") {
+      validationError = "Anda sudah melakukan Clock Out (Pulang Kerja) untuk hari ini.";
+    }
+  } else if (attendanceType === "STOP_BREAK" || attendanceType === "END_BREAK") {
+    if (lastType !== "START_BREAK") {
+      validationError = "Stop Break hanya dapat dilakukan jika Anda telah melakukan Start Break sebelumnya.";
+    } else if (lastType === "CLOCK_OUT") {
+      validationError = "Anda sudah melakukan Clock Out (Pulang Kerja) untuk hari ini.";
+    }
+  } else if (attendanceType === "CLOCK_OUT") {
+    if (!hasClockIn) {
+      validationError = "Anda harus melakukan Clock In (Masuk Kerja) terlebih dahulu sebelum Clock Out.";
+    } else if (lastType === "START_BREAK") {
+      validationError = "Anda sedang dalam masa Istirahat. Silakan lakukan Stop Break terlebih dahulu sebelum Clock Out.";
+    } else if (lastType === "CLOCK_OUT") {
+      validationError = "Anda sudah melakukan Clock Out (Pulang Kerja) untuk hari ini.";
+    }
+  }
+
+  if (validationError) {
+    showScanResult("❌ Absensi Ditolak: " + validationError, "error");
+    menuButtons.forEach(btn => {
+      btn.removeAttribute('disabled');
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+    });
     return;
   }
 
@@ -1336,8 +1499,9 @@ function submitAttendance(attendanceType = "CLOCK_IN") {
       face_verified: faceVerified,
       liveness_passed: livenessPassed,
       attendance_type: attendanceType,
+      working_hour: selectedWorkingHour || "",
       device_id: getOrCreateDeviceId(),
-      notes: "Absen " + typeLabel + " via PWA (Akurasi GPS: " + Math.round(accuracy || 0) + "m)"
+      notes: "Absen " + typeLabel + (selectedWorkingHour ? (" (" + selectedWorkingHour + ")") : "") + " via PWA (Akurasi GPS: " + Math.round(accuracy || 0) + "m)"
     };
 
     if (navigator.onLine) {
@@ -1367,6 +1531,21 @@ function submitAttendance(attendanceType = "CLOCK_IN") {
   } else {
     showScanResult("❌ Fitur Geolocation/GPS tidak didukung pada browser ini.", "error");
   }
+}
+
+/**
+ * Menyimpan status absensi lokal untuk NRP pengguna pada hari ini
+ */
+function saveLocalAttendanceStatus(nrp, attendanceType) {
+  try {
+    const todayDateStr = new Date().toISOString().split('T')[0];
+    const key = 'attendance_status_' + nrp + '_' + todayDateStr;
+    const current = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({
+      hasClockIn: current.hasClockIn || (attendanceType === 'CLOCK_IN'),
+      lastType: attendanceType
+    }));
+  } catch (e) { }
 }
 
 /**
@@ -1410,6 +1589,8 @@ async function sendToGAS(payload) {
       }, 6000);
       return;
     }
+
+    saveLocalAttendanceStatus(payload.nrp, payload.attendance_type);
 
     if (challengeText) challengeText.innerText = "✅ Absensi Berhasil! Menutup halaman dalam 3 detik...";
     const successMsg = resData && resData.message ? resData.message : ("Absensi sukses dikirim! Terima kasih, " + payload.nrp + ".");
@@ -1477,6 +1658,8 @@ function enqueueOfflineRecord(payload) {
     queue.push(payload);
     localStorage.setItem('offline_attendance_queue', JSON.stringify(queue));
   }
+
+  saveLocalAttendanceStatus(payload.nrp, payload.attendance_type);
 
   updateOfflineBadge();
   showScanResult("Koneksi internet lambat/mati. Absen Anda berhasil diverifikasi & disimpan lokal secara aman. Otomatis disinkronkan saat sinyal membaik.", "warning");

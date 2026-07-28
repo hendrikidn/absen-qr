@@ -567,6 +567,7 @@
       background: linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(15, 23, 42, 0.7) 100%);
       border-color: rgba(16, 185, 129, 0.4);
     }
+
     .menu-card.clock-in:hover {
       background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(15, 23, 42, 0.8) 100%);
       border-color: rgba(16, 185, 129, 0.7);
@@ -577,6 +578,7 @@
       background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(15, 23, 42, 0.7) 100%);
       border-color: rgba(245, 158, 11, 0.4);
     }
+
     .menu-card.start-break:hover {
       background: linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(15, 23, 42, 0.8) 100%);
       border-color: rgba(245, 158, 11, 0.7);
@@ -587,6 +589,7 @@
       background: linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(15, 23, 42, 0.7) 100%);
       border-color: rgba(99, 102, 241, 0.4);
     }
+
     .menu-card.stop-break:hover {
       background: linear-gradient(135deg, rgba(99, 102, 241, 0.3) 0%, rgba(15, 23, 42, 0.8) 100%);
       border-color: rgba(99, 102, 241, 0.7);
@@ -597,6 +600,7 @@
       background: linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(15, 23, 42, 0.7) 100%);
       border-color: rgba(239, 68, 68, 0.4);
     }
+
     .menu-card.clock-out:hover {
       background: linear-gradient(135deg, rgba(239, 68, 68, 0.3) 0%, rgba(15, 23, 42, 0.8) 100%);
       border-color: rgba(239, 68, 68, 0.7);
@@ -687,31 +691,27 @@
         <!-- Challenge notification -->
         <div id="challengeText" class="challenge-prompt">Memuat pendeteksi...</div>
       </div>
-      <button id="btnCancelScan" class="btn btn-secondary" onclick="cancelScan()">Batal Scan</button>
+      <button id="btnCancelScan" class="btn btn-secondary" onclick="cancelScan()">Batal</button>
     </div>
 
     <div id="scanStep3" style="display: none; position: relative;">
       <label>Langkah 3: Pilih Menu Absensi</label>
       <div class="menu-grid-2x2">
-        <button type="button" class="menu-card clock-in" onclick="submitAttendance('CLOCK_IN')">
+        <button type="button" class="menu-card clock-in" onclick="handleClockInClick()">
           <div class="menu-icon">🟢</div>
-          <div class="menu-title">Clock In</div>
-          <div class="menu-sub">Masuk Kerja</div>
+          <div class="menu-title">Masuk Kerja</div>
         </button>
         <button type="button" class="menu-card start-break" onclick="submitAttendance('START_BREAK')">
           <div class="menu-icon">☕</div>
-          <div class="menu-title">Start Break</div>
-          <div class="menu-sub">Mulai Istirahat</div>
+          <div class="menu-title">Mulai Istirahat</div>
         </button>
         <button type="button" class="menu-card stop-break" onclick="submitAttendance('STOP_BREAK')">
           <div class="menu-icon">🔄</div>
-          <div class="menu-title">Stop Break</div>
-          <div class="menu-sub">Selesai Istirahat</div>
+          <div class="menu-title">Selesai Istirahat</div>
         </button>
         <button type="button" class="menu-card clock-out" onclick="submitAttendance('CLOCK_OUT')">
           <div class="menu-icon">🔴</div>
-          <div class="menu-title">Clock Out</div>
-          <div class="menu-sub">Pulang Kerja</div>
+          <div class="menu-title">Pulang Kerja</div>
         </button>
       </div>
       <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()">Batal Scan</button>
@@ -766,13 +766,31 @@
         <label for="syncNRP">Nomor Registrasi Pegawai (NRP)</label>
         <input type="text" id="syncNRP" placeholder="Contoh: SNI*******">
       </div>
-      <button id="btnSyncProfile" class="btn" onclick="this.style.display='none'; this.disabled=true; syncFaceProfile(this);" style="margin-bottom: 12px;">Sinkronkan Perangkat</button>
+      <button id="btnSyncProfile" class="btn"
+        onclick="this.style.display='none'; this.disabled=true; syncFaceProfile(this);"
+        style="margin-bottom: 12px;">Sinkronkan Perangkat</button>
       <button class="btn btn-secondary" onclick="closeSyncOverlay()">Batal</button>
       <div id="syncResult" class="feedback-message" style="margin-top: 10px;"></div>
     </div>
   </div>
 
-  <script src="pwa_app.js?v=4.7" type="text/javascript"></script>
+  <!-- Shift Selection Modal (Pilih Shift Jam Kerja saat Clock In) -->
+  <div class="overlay" id="shiftSelectOverlay" style="display: none;">
+    <div class="modal-card">
+      <h2 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; text-align: center; color: var(--text-main);">
+        📋 Pilih Shift Kerja
+      </h2>
+      <p id="shiftOutletName" style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">
+        Pilih opsi jam kerja untuk outlet Anda
+      </p>
+      <div id="shiftOptionsContainer" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 250px; overflow-y: auto;">
+        <!-- Shift options added dynamically -->
+      </div>
+      <button class="btn btn-secondary" onclick="closeShiftOverlay()">Batal</button>
+    </div>
+  </div>
+
+  <script src="pwa_app.js?v=4.9" type="text/javascript"></script>
 </body>
 
 </html>
