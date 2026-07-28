@@ -282,6 +282,9 @@ async function stopAllCameras() {
     });
   } catch(e){}
 
+  // Reset bendera pemrosesan QR agar pemindaian ulang selalu diizinkan
+  isProcessingQR = false;
+
   // Beri jeda 150ms agar driver hardware kamera OS rilis penuh
   await new Promise(r => setTimeout(r, 150));
 }
@@ -460,8 +463,8 @@ async function onQRScanSuccess(decodedText, decodedResult) {
 
     // 3. Hentikan scanner & buka langsung Kamera Liveness Langkah 2
     await stopAllCameras();
-    await startLivenessCamera();
     isProcessingQR = false;
+    await startLivenessCamera();
 
   } catch (error) {
     console.error("Gagal memproses QR Code:", error);
@@ -507,6 +510,7 @@ function resetToScanStep1() {
   document.getElementById('scanStep2').style.display = 'none';
   document.getElementById('scanResult').style.display = 'none';
   scannedQRData = null;
+  isProcessingQR = false;
   livenessPassed = false;
   faceVerified = false;
   baselineSmileRatio = null;
