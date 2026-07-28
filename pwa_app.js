@@ -490,10 +490,12 @@ async function stopAllCameras() {
 function resetToScanStep1UI() {
   const step1 = document.getElementById('scanStep1');
   const step2 = document.getElementById('scanStep2');
+  const step3 = document.getElementById('scanStep3');
   const result = document.getElementById('scanResult');
 
   if (step1) step1.style.display = 'block';
   if (step2) step2.style.display = 'none';
+  if (step3) step3.style.display = 'none';
   if (result) {
     result.style.display = 'none';
     result.className = 'feedback-message';
@@ -528,9 +530,37 @@ function resetToScanStep1() {
   faceVerified = false;
   baselineSmileRatio = null;
   latestLiveDescriptor = null;
-  document.getElementById('scanStep1').style.display = 'block';
-  document.getElementById('scanStep2').style.display = 'none';
-  document.getElementById('scanResult').style.display = 'none';
+  const step1 = document.getElementById('scanStep1');
+  const step2 = document.getElementById('scanStep2');
+  const step3 = document.getElementById('scanStep3');
+  const result = document.getElementById('scanResult');
+
+  if (step1) step1.style.display = 'block';
+  if (step2) step2.style.display = 'none';
+  if (step3) step3.style.display = 'none';
+  if (result) result.style.display = 'none';
+}
+
+/**
+ * Pindah ke Langkah 3: Pilih Menu Absensi (2x2 Grid)
+ * Dipanggil setelah Verifikasi Wajah & Liveness Check berhasil pada Langkah 2
+ */
+function showScanStep3() {
+  const step1 = document.getElementById('scanStep1');
+  const step2 = document.getElementById('scanStep2');
+  const step3 = document.getElementById('scanStep3');
+
+  if (step1) step1.style.display = 'none';
+  if (step2) step2.style.display = 'none';
+  if (step3) step3.style.display = 'block';
+
+  // Re-enable tombol-tombol menu
+  const menuButtons = document.querySelectorAll('#scanStep3 .menu-card');
+  menuButtons.forEach(btn => {
+    btn.removeAttribute('disabled');
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = 'auto';
+  });
 }
 
 /**
@@ -1183,11 +1213,11 @@ async function runLivenessLoop(video) {
 
       if (isSmileDetected) {
         livenessPassed = true;
-        challengeText.innerText = "Senyuman Terdeteksi! 😊 Mengirim sampel ke server...";
+        challengeText.innerText = "Senyuman Terdeteksi! 😊";
         stopScanCamera();
 
-        // Kirim absen beserta live descriptor ke server cloud
-        submitAttendance(latestLiveDescriptor);
+        // Pindah ke Langkah 3: Pilih Menu Absensi (2x2 Grid)
+        showScanStep3();
         return;
       }
     }
@@ -1244,10 +1274,19 @@ function checkSmileLiveness(landmarks) {
 
 /**
  * Memproses Pengiriman Data Kehadiran (Online / Masuk Antrean Offline)
+ * @param {string} attendanceType - "CLOCK_IN" | "START_BREAK" | "STOP_BREAK" | "CLOCK_OUT"
  */
-function submitAttendance(liveFaceDescriptor) {
+function submitAttendance(attendanceType = "CLOCK_IN") {
   const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
   const challengeText = document.getElementById('challengeText');
+
+  // Disable menu buttons in step 3 to prevent multiple clicks
+  const menuButtons = document.querySelectorAll('#scanStep3 .menu-card');
+  menuButtons.forEach(btn => {
+    btn.setAttribute('disabled', 'true');
+    btn.style.opacity = '0.6';
+    btn.style.pointerEvents = 'none';
+  });
 
   if (!scannedQRData || (!scannedQRData.outlet && !scannedQRData.outlet_id)) {
     console.error("Data QR Code tidak ditemukan!");
@@ -1259,10 +1298,7 @@ function submitAttendance(liveFaceDescriptor) {
     return;
   }
 
-  if (challengeText) {
-    challengeText.style.display = 'block';
-    challengeText.innerText = "⏳ Memproses lokasi GPS...";
-  }
+  showScanResult("⏳ Memproses lokasi GPS...", "info");
 
   function proceedWithPayload(lat, lng, accuracy) {
     if (lat === 0 && lng === 0) {
@@ -1283,6 +1319,11 @@ function submitAttendance(liveFaceDescriptor) {
       return;
     }
 
+    let typeLabel = "Clock In";
+    if (attendanceType === "START_BREAK") typeLabel = "Start Break";
+    else if (attendanceType === "STOP_BREAK" || attendanceType === "END_BREAK") typeLabel = "Stop Break";
+    else if (attendanceType === "CLOCK_OUT") typeLabel = "Clock Out";
+
     const payload = {
       nrp: localNRP,
       outlet: scannedQRData.outlet || scannedQRData.outlet_id,
@@ -1291,12 +1332,12 @@ function submitAttendance(liveFaceDescriptor) {
       latitude: lat,
       longitude: lng,
       accuracy: Math.round(accuracy || 0),
-      face_embedding: liveFaceDescriptor || latestLiveDescriptor,
+      face_embedding: latestLiveDescriptor,
       face_verified: faceVerified,
       liveness_passed: livenessPassed,
-      attendance_type: "CLOCK_IN",
+      attendance_type: attendanceType,
       device_id: getOrCreateDeviceId(),
-      notes: "Absen QR via PWA (Akurasi GPS: " + Math.round(accuracy || 0) + "m)"
+      notes: "Absen " + typeLabel + " via PWA (Akurasi GPS: " + Math.round(accuracy || 0) + "m)"
     };
 
     if (navigator.onLine) {
