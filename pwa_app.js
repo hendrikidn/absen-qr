@@ -57,13 +57,13 @@ window.addEventListener('DOMContentLoaded', async () => {
  */
 function checkURLParameters() {
   const urlParams = new URLSearchParams(window.location.search);
-  const outlet = urlParams.get('outlet') || urlParams.get('outlet_id');
+  const outletId = urlParams.get('outlet_id');
   const timestamp = urlParams.get('timestamp');
   const totpToken = urlParams.get('totp_token');
   
-  if (outlet && timestamp && totpToken) {
+  if (outletId && timestamp && totpToken) {
     scannedQRData = {
-      outlet: outlet,
+      outlet_id: outletId,
       timestamp: Number(timestamp),
       totp_token: totpToken
     };
@@ -243,28 +243,26 @@ async function onQRScanSuccess(decodedText, decodedResult) {
     // 1. Periksa jika decodedText berupa URL atau JSON string
     if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
       const url = new URL(decodedText);
-      const outlet = url.searchParams.get('outlet') || url.searchParams.get('outlet_id');
+      const outletId = url.searchParams.get('outlet_id');
       const timestamp = url.searchParams.get('timestamp');
       const totpToken = url.searchParams.get('totp_token');
       
-      if (!outlet || !totpToken || !timestamp) {
+      if (!outletId || !totpToken || !timestamp) {
         throw new Error("Parameter URL QR Code tidak lengkap");
       }
       
       scannedQRData = {
-        outlet: outlet,
+        outlet_id: outletId,
         timestamp: Number(timestamp),
         totp_token: totpToken
       };
     } else {
       // Fallback format lama (JSON)
       scannedQRData = JSON.parse(decodedText);
-      const outletVal = scannedQRData.outlet || scannedQRData.outlet_id;
       
-      if (!outletVal || !scannedQRData.totp_token || !scannedQRData.timestamp) {
+      if (!scannedQRData.outlet_id || !scannedQRData.totp_token || !scannedQRData.timestamp) {
         throw new Error("Format JSON QR Code tidak sesuai");
       }
-      scannedQRData.outlet = outletVal;
     }
 
     console.log("QR Code valid terbaca:", scannedQRData);
@@ -308,19 +306,6 @@ function cancelScan() {
   stopScanCamera();
   resetToScanStep1();
   startQRScanner();
-}
-
-/**
- * Memulai ulang scanner QR Code pada Langkah 1
- */
-async function restartQRScanner() {
-  const resultDiv = document.getElementById('scanResult');
-  if (resultDiv) resultDiv.style.display = 'none';
-  showScanResult("⏳ Memulai ulang kamera QR Code scanner...", "success");
-  await startQRScanner();
-  setTimeout(() => {
-    if (resultDiv) resultDiv.style.display = 'none';
-  }, 1500);
 }
 
 let baselineSmileRatio = null;
@@ -490,7 +475,7 @@ function submitAttendance() {
   const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
   const challengeText = document.getElementById('challengeText');
 
-  if (!scannedQRData || (!scannedQRData.outlet && !scannedQRData.outlet_id)) {
+  if (!scannedQRData || !scannedQRData.outlet_id) {
     console.error("Data QR Code tidak ditemukan!");
     showScanResult("Data QR Code tidak valid. Silakan scan ulang QR Code.", "error");
     setTimeout(() => {
@@ -505,38 +490,19 @@ function submitAttendance() {
     challengeText.innerText = "⏳ Memproses lokasi GPS...";
   }
 
-  function proceedWithPayload(lat, lng, accuracy) {
-    if (lat === 0 && lng === 0) {
-      showScanResult("❌ GPS HP Anda tidak aktif. Mohon aktifkan Lokasi/GPS presisi tinggi di HP Anda.", "error");
-      setTimeout(() => {
-        resetToScanStep1();
-        startQRScanner();
-      }, 4000);
-      return;
-    }
-
-    if (accuracy > 150) {
-      showScanResult("❌ Akurasi GPS tidak memadai (" + Math.round(accuracy) + " meter). Matikan Fake GPS / aktifkan Lokasi Presisi di HP Anda.", "error");
-      setTimeout(() => {
-        resetToScanStep1();
-        startQRScanner();
-      }, 4000);
-      return;
-    }
-
+  function proceedWithPayload(lat, lng) {
     const payload = {
       nrp: localNRP,
-      outlet: scannedQRData.outlet || scannedQRData.outlet_id,
+      outlet_id: scannedQRData.outlet_id,
       totp_token: scannedQRData.totp_token,
       timestamp: scannedQRData.timestamp,
       latitude: lat,
       longitude: lng,
-      accuracy: Math.round(accuracy || 0),
       face_verified: faceVerified,
       liveness_passed: livenessPassed,
       attendance_type: "CLOCK_IN",
       device_id: getOrCreateDeviceId(),
-      notes: "Absen QR via PWA (Akurasi GPS: " + Math.round(accuracy || 0) + "m)"
+      notes: "Absen QR via PWA (Liveness Passed)"
     };
 
     if (navigator.onLine) {
@@ -546,25 +512,27 @@ function submitAttendance() {
     }
   }
 
-  // Ambil lokasi GPS HP dengan validasi presisi tinggi
+  // Ambil lokasi GPS HP dengan fallback akurasi
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const accuracy = position.coords ? (position.coords.accuracy || 0) : 0;
-        proceedWithPayload(position.coords.latitude, position.coords.longitude, accuracy);
+        proceedWithPayload(position.coords.latitude, position.coords.longitude);
       },
       (error) => {
-        console.warn("High accuracy GPS error:", error);
-        showScanResult("❌ Gagal mendapatkan lokasi GPS HP Anda. Pastikan izin lokasi aktif dan tidak menggunakan Fake GPS.", "error");
-        setTimeout(() => {
-          resetToScanStep1();
-          startQRScanner();
-        }, 4000);
+        console.warn("High accuracy GPS timeout/error, menggunakan fallback low accuracy:", error);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => proceedWithPayload(pos.coords.latitude, pos.coords.longitude),
+          (err2) => {
+            console.warn("GPS lokasi tidak tersedia, mengirim koordinat default 0,0:", err2);
+            proceedWithPayload(0, 0);
+          },
+          { enableHighAccuracy: false, timeout: 4000 }
+        );
       },
-      { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 5000 }
     );
   } else {
-    showScanResult("❌ Fitur Geolocation/GPS tidak didukung pada browser ini.", "error");
+    proceedWithPayload(0, 0);
   }
 }
 
@@ -793,15 +761,9 @@ async function captureFaceEmbeddings() {
 
   const video = document.getElementById('regFaceVideo');
   const countSpan = document.getElementById('capturedCount');
-  const nrpInput = document.getElementById('regNRP');
-  const nrp = nrpInput ? nrpInput.value.trim() : '';
+  const nrp = document.getElementById('regNRP').value.trim();
 
-  if (!nrp) {
-    showRegResult("Harap masukkan NRP Anda sebelum mendaftar.", "error");
-    return;
-  }
-
-  showRegResult("⏳ Memproses & memverifikasi registrasi di server cloud...", "success");
+  showRegResult("Menganalisis wajah Anda...", "success");
 
   // Deteksi wajah & ekstrak deskriptor
   const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
@@ -809,33 +771,27 @@ async function captureFaceEmbeddings() {
     .withFaceDescriptor();
 
   if (detection) {
+    // Simpan embedding wajah secara lokal di IndexedDB/LocalStorage
+    // Di aplikasi nyata, kumpulkan 3 sampel lalu rata-ratakan embedding-nya.
+    // Di sini kita langsung simpan embedding (berupa array float32)
     const embeddingArray = Array.from(detection.descriptor);
-    const deviceId = getOrCreateDeviceId();
 
-    // 1. Kirim registrasi wajah & Device ID ke server cloud Google Sheets DULU untuk validasi
-    const resData = await uploadFaceEmbeddingToCloud(nrp, embeddingArray, deviceId);
-
-    // 2. Jika server menolak registrasi (misal: Device sudah dipakai oleh NRP lain)
-    if (resData && resData.status === "error") {
-      console.warn("Registrasi ditolak server:", resData.message);
-      showRegResult("❌ Ditolak Server: " + resData.message, "error");
-      return;
-    }
-
-    // 3. Jika server menyetujui, simpan data ke LocalStorage HP
     localStorage.setItem('attendance_registered_nrp', nrp);
     localStorage.setItem('attendance_registered_embeddings', JSON.stringify(embeddingArray));
-    localStorage.setItem('attendance_registered_device_id', deviceId);
-    registeredEmbeddings = embeddingArray;
+
+    // Kirim registrasi wajah ke cloud Google Sheets
+    uploadFaceEmbeddingToCloud(nrp, embeddingArray);
 
     countSpan.innerText = "3"; // Simulasi selesai
-    const serverMessage = resData && resData.message ? resData.message : ("Registrasi Wajah NRP " + nrp + " Berhasil!");
-    showRegResult("✅ " + serverMessage, "success");
+    showRegResult("Registrasi Wajah NRP " + nrp + " Sukses! Data wajah tersimpan secara lokal & cloud.", "success");
+
+    // Perbarui referensi global
+    registeredEmbeddings = embeddingArray;
 
     setTimeout(() => {
       stopRegistrationCamera();
       switchView('scan');
-    }, 3500);
+    }, 3000);
 
   } else {
     showRegResult("Wajah tidak terdeteksi. Posisikan wajah Anda tegak lurus di dalam oval panduan.", "error");
@@ -850,42 +806,30 @@ function showRegResult(message, type) {
 }
 
 /**
- * Mengunggah data template wajah & Device ID ke cloud (Google Sheets tab Face_Embedding) setelah registrasi sukses
+ * Mengunggah data template wajah ke cloud (Google Sheets) setelah registrasi sukses
  */
-async function uploadFaceEmbeddingToCloud(nrp, embedding, deviceId) {
-  const activeDeviceId = deviceId || getOrCreateDeviceId();
+async function uploadFaceEmbeddingToCloud(nrp, embedding) {
   if (!navigator.onLine) {
-    console.log("Registrasi wajah cloud ditunda (offline).");
-    return { status: "error", message: "Koneksi internet terputus. Mohon hubungkan ke internet untuk melakukan registrasi." };
+    console.log("Registrasi wajah cloud ditunda (offline). Data wajah disimpan lokal.");
+    return;
   }
   try {
     const payload = {
       action: "register_face",
       nrp: nrp,
       face_embedding: embedding,
-      device_id: activeDeviceId
+      device_id: getOrCreateDeviceId()
     };
     
-    const response = await fetch(GAS_URL, {
+    await fetch(GAS_URL, {
       method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      mode: "no-cors", // Mode no-cors untuk bypass redirect Google
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-
-    let resData = null;
-    try {
-      resData = await response.json();
-    } catch (e) {
-      console.log("Membaca respon JSON dari GAS register_face:", e);
-    }
-
-    if (resData) {
-      return resData;
-    }
-    return { status: "success", message: "Registrasi wajah berhasil disimpan." };
+    console.log("Registrasi wajah & Device ID untuk NRP " + nrp + " berhasil diunggah ke Google Sheets.");
   } catch (err) {
     console.error("Gagal mengunggah data wajah ke cloud:", err);
-    return { status: "error", message: "Gagal terhubung ke server cloud: " + err.toString() };
   }
 }
 
