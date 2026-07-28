@@ -155,13 +155,13 @@ function loadLocalRegistration() {
 async function stopAllCameras() {
   if (html5QrcodeScanner) {
     try {
-      if (html5QrcodeScanner.isScanning) {
-        await html5QrcodeScanner.stop();
-      }
-      html5QrcodeScanner.clear();
+      await html5QrcodeScanner.stop();
     } catch (e) {
-      console.warn("Cleanup html5QrcodeScanner error:", e);
+      // Abaikan jika scanner memang sedang tidak berjalan
     }
+    try {
+      html5QrcodeScanner.clear();
+    } catch (e) {}
     html5QrcodeScanner = null;
   }
 
@@ -171,8 +171,6 @@ async function stopAllCameras() {
     } catch(e){}
     scanStream = null;
   }
-  const scanVideo = document.getElementById('scanFaceVideo');
-  if (scanVideo) scanVideo.srcObject = null;
 
   if (regStream) {
     try {
@@ -180,8 +178,19 @@ async function stopAllCameras() {
     } catch(e){}
     regStream = null;
   }
-  const regVideo = document.getElementById('regFaceVideo');
-  if (regVideo) regVideo.srcObject = null;
+
+  // Sapu bersih seluruh stream pada elemen <video> di DOM
+  document.querySelectorAll('video').forEach(v => {
+    if (v && v.srcObject) {
+      try {
+        const s = v.srcObject;
+        if (s && s.getTracks) {
+          s.getTracks().forEach(t => t.stop());
+        }
+      } catch(e){}
+      v.srcObject = null;
+    }
+  });
 
   // Jeda 150ms untuk pelepasan penuh hardware kamera pada OS/Browser
   await new Promise(r => setTimeout(r, 150));
