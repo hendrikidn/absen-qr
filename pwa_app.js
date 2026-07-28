@@ -1985,7 +1985,7 @@ function closeSyncOverlay() {
     btnSync.className = 'btn';
     btnSync.style.display = 'block';
     btnSync.style.marginBottom = '12px';
-    btnSync.innerHTML = '⚡ Sinkronkan Perangkat';
+    btnSync.innerHTML = 'Sinkronkan Perangkat';
   }
 
   checkDeviceSyncState();
