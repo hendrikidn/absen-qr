@@ -257,16 +257,35 @@ async function stopAllCameras() {
 
   if (html5QrcodeScanner) {
     try {
-      const isScanning = html5QrcodeScanner.isScanning || (html5QrcodeScanner.getState && html5QrcodeScanner.getState() === 2);
+      // Coba deteksi state scanning dengan beberapa cara
+      let isScanning = false;
+      try {
+        if (html5QrcodeScanner.getState) {
+          isScanning = html5QrcodeScanner.getState() === 2; // Html5QrcodeScannerState.SCANNING = 2
+        } else if (typeof html5QrcodeScanner.isScanning === 'boolean') {
+          isScanning = html5QrcodeScanner.isScanning;
+        } else {
+          isScanning = true; // Asumsikan sedang scanning jika tidak bisa deteksi
+        }
+      } catch (stateErr) {
+        isScanning = true;
+      }
+
       if (isScanning) {
         await html5QrcodeScanner.stop().catch(err => console.warn("Scanner stop warning:", err));
       }
-      try { await html5QrcodeScanner.clear(); } catch (err) { }
+      try { await html5QrcodeScanner.clear(); } catch (err) { console.warn("Scanner clear warning:", err); }
     } catch (e) {
       console.warn("Cleanup scanner instance warning:", e);
     }
     html5QrcodeScanner = null;
   }
+
+  // PAKSA bersihkan elemen #reader dari sisa DOM Html5Qrcode agar re-init selalu berhasil
+  try {
+    const readerEl = document.getElementById('reader');
+    if (readerEl) readerEl.innerHTML = '';
+  } catch (e) { }
 
   // Hentikan seluruh stream yang masih menempel pada elemen video di DOM
   try {
@@ -281,8 +300,8 @@ async function stopAllCameras() {
     });
   } catch (e) { }
 
-  // Beri jeda 150ms agar driver hardware kamera OS rilis penuh
-  await new Promise(r => setTimeout(r, 150));
+  // Beri jeda 300ms agar driver hardware kamera OS rilis penuh
+  await new Promise(r => setTimeout(r, 300));
 }
 
 /**
@@ -296,6 +315,13 @@ async function startQRScanner() {
 
   // Tampilkan Step 1, Sembunyikan Step 2
   resetToScanStep1UI();
+
+  // Pastikan elemen #reader benar-benar kosong sebelum buat instance baru
+  // Html5Qrcode WAJIB mendapatkan elemen kosong, jika tidak akan gagal diam-diam
+  try {
+    const readerEl = document.getElementById('reader');
+    if (readerEl) readerEl.innerHTML = '';
+  } catch (e) { }
 
   const config = {
     fps: 15,
@@ -467,35 +493,55 @@ async function cancelScan() {
 /**
  * Memulai ulang scanner QR Code pada Langkah 1 (Atau langsung ke Langkah 2 jika data QR sudah ada)
  */
+let isRestartingScanner = false; // Guard agar tidak ada double-click race condition
 async function restartQRScanner() {
-  const localNRP = localStorage.getItem('attendance_registered_nrp');
+  if (isRestartingScanner) return; // Cegah klik ganda
+  isRestartingScanner = true;
 
-  // 1. Jika data QR Code sebelumnya sudah tersimpan dan valid, langsung berlanjut ke Langkah 2!
-  if (scannedQRData && scannedQRData.outlet && scannedQRData.totp_token) {
-    console.log("Data QR Code valid terdeteksi, langsung berlanjut ke Langkah 2:", scannedQRData);
-    if (!localNRP) {
-      await stopAllCameras();
-      openSyncOverlay();
-      return;
-    }
-    await startLivenessCamera();
-    return;
+  const btn = document.getElementById('btnRescanQR');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Memulai ulang...';
   }
 
-  // 2. Jika data QR belum ada, bersihkan & mulai ulang kamera QR scanner Langkah 1
-  scannedQRData = null;
   try {
-    if (window.location.search) {
-      window.history.replaceState({}, '', window.location.pathname);
+    const localNRP = localStorage.getItem('attendance_registered_nrp');
+
+    // 1. Jika data QR Code sebelumnya sudah tersimpan dan valid, langsung berlanjut ke Langkah 2!
+    if (scannedQRData && scannedQRData.outlet && scannedQRData.totp_token) {
+      console.log("Data QR Code valid terdeteksi, langsung berlanjut ke Langkah 2:", scannedQRData);
+      if (!localNRP) {
+        await stopAllCameras();
+        openSyncOverlay();
+        return;
+      }
+      await startLivenessCamera();
+      return;
     }
-  } catch (e) { }
 
-  const resultDiv = document.getElementById('scanResult');
-  if (resultDiv) resultDiv.style.display = 'none';
+    // 2. Jika data QR belum ada, bersihkan & mulai ulang kamera QR scanner Langkah 1
+    scannedQRData = null;
+    isProcessingQRScan = false;
+    try {
+      if (window.location.search) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } catch (e) { }
 
-  await stopAllCameras();
-  resetToScanStep1();
-  await startQRScanner();
+    const resultDiv = document.getElementById('scanResult');
+    if (resultDiv) resultDiv.style.display = 'none';
+
+    // startQRScanner() sudah memanggil stopAllCameras() di dalamnya, tidak perlu panggil lagi
+    await startQRScanner();
+
+  } finally {
+    isRestartingScanner = false;
+    const btn2 = document.getElementById('btnRescanQR');
+    if (btn2) {
+      btn2.disabled = false;
+      btn2.innerHTML = `<svg style="width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> Scan Ulang QR Code`;
+    }
+  }
 }
 
 let baselineSmileRatio = null;
