@@ -298,6 +298,9 @@ async function startQRScanner() {
   // Tampilkan Step 1, Sembunyikan Step 2
   resetToScanStep1();
 
+  // Beri waktu 50ms agar DOM layout #reader ter-render sempurna dengan ukuran aktual
+  await new Promise(r => setTimeout(r, 50));
+
   const readerEl = document.getElementById('reader');
   if (readerEl) {
     readerEl.innerHTML = "";
@@ -306,8 +309,10 @@ async function startQRScanner() {
   const config = { 
     fps: 15,
     qrbox: (viewfinderWidth, viewfinderHeight) => {
-      const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-      const qrboxSize = Math.floor(minEdge * 0.8);
+      const w = (viewfinderWidth && viewfinderWidth > 50) ? viewfinderWidth : (readerEl ? readerEl.clientWidth : 280) || 280;
+      const h = (viewfinderHeight && viewfinderHeight > 50) ? viewfinderHeight : (readerEl ? readerEl.clientHeight : 280) || 280;
+      const minEdge = Math.min(w, h);
+      const qrboxSize = Math.max(200, Math.floor(minEdge * 0.85));
       return {
         width: qrboxSize,
         height: qrboxSize
