@@ -1,6 +1,6 @@
 /**
  * Smart Attendance PWA - Client Logic
- * Menangani Scanner QR, Deteksi Wajah, Liveness Challenge (Kedipan), dan Antrean Offline
+ * Menangani Scanner QR, Deteksi Wajah, Liveness Challenge (Senyuman), dan Antrean Offline
  */
 
 // Konfigurasi Endpoint Google Apps Script Web App Anda
@@ -19,12 +19,14 @@ let latestLiveDescriptor = null; // Deskriptor wajah live dari kamera (dikirim l
 // Variabel Data dari Hasil Scan QR Code PC
 let scannedQRData = null;
 let isProcessingQRScan = false;
+let isRestartingScanner = false; // Guard agar tidak ada double-click race condition
 
 // Keadaan Liveness Check
 let blinkCount = 0;
 let isBlinked = false;
 let livenessPassed = false;
 let faceVerified = false;
+let baselineSmileRatio = null;
 
 /**
  * Mendapatkan atau Membuat UUID Unik Perangkat (Device ID Persistent)
@@ -200,10 +202,18 @@ async function switchView(viewName) {
     baselineSmileRatio = null;
     latestLiveDescriptor = null;
 
-    document.getElementById('viewScan').classList.add('active');
-    startQRScanner();
+    // Reset UI ke Langkah 1
+    resetToScanStep1UI();
+
+    // Tampilkan view scan
+    document.getElementById('viewScan').classList.add('view-screen active');
+
+    // Start ulang QR scanner dengan delay agar kamera benar-benar release
+    setTimeout(() => {
+      startQRScanner();
+    }, 500);
   } else {
-    document.getElementById('viewRegister').classList.add('active');
+    document.getElementById('viewRegister').classList.add('view-screen active');
   }
 }
 
@@ -284,7 +294,13 @@ async function stopAllCameras() {
   // PAKSA bersihkan elemen #reader dari sisa DOM Html5Qrcode agar re-init selalu berhasil
   try {
     const readerEl = document.getElementById('reader');
-    if (readerEl) readerEl.innerHTML = '';
+    if (readerEl) {
+      readerEl.innerHTML = '';
+      // Clone dan replace untuk menghapus semua event listener
+      const newReader = readerEl.cloneNode(false);
+      readerEl.parentNode.replaceChild(newReader, readerEl);
+      newReader.id = 'reader';
+    }
   } catch (e) { }
 
   // Hentikan seluruh stream yang masih menempel pada elemen video di DOM
@@ -305,23 +321,87 @@ async function stopAllCameras() {
 }
 
 /**
+ * Reset tampilan UI saja ke Langkah 1, tanpa menghapus scannedQRData.
+ * Digunakan oleh startQRScanner() agar data QR yang sudah di-scan tidak hilang
+ * jika kamera restart karena alasan lain.
+ */
+function resetToScanStep1UI() {
+  const step1 = document.getElementById('scanStep1');
+  const step2 = document.getElementById('scanStep2');
+  const result = document.getElementById('scanResult');
+
+  if (step1) step1.style.display = 'block';
+  if (step2) step2.style.display = 'none';
+  if (result) {
+    result.style.display = 'none';
+    result.className = 'feedback-message';
+  }
+
+  livenessPassed = false;
+  faceVerified = false;
+  baselineSmileRatio = null;
+
+  // Reset challenge text
+  const challengeText = document.getElementById('challengeText');
+  if (challengeText) {
+    challengeText.style.display = 'none';
+    challengeText.innerText = 'Memuat pendeteksi...';
+  }
+
+  // Reset face guide
+  const faceGuide = document.getElementById('faceGuide');
+  if (faceGuide) {
+    faceGuide.className = 'face-guide-oval';
+  }
+}
+
+/**
+ * Reset tampilan UI ke Langkah 1 BESERTA data QR (full reset).
+ * Digunakan saat user membatalkan scan atau terjadi error yang memerlukan scan ulang dari awal.
+ */
+function resetToScanStep1() {
+  scannedQRData = null;
+  isProcessingQRScan = false;
+  livenessPassed = false;
+  faceVerified = false;
+  baselineSmileRatio = null;
+  latestLiveDescriptor = null;
+  document.getElementById('scanStep1').style.display = 'block';
+  document.getElementById('scanStep2').style.display = 'none';
+  document.getElementById('scanResult').style.display = 'none';
+}
+
+/**
  * Menyalakan Kamera QR Code Reader di HP
  */
 async function startQRScanner() {
-  try { await stopAllCameras(); } catch (e) { }
-
-  // Reset processing lock agar scan baru tidak diblokir
+  // Bersihkan state processing
   isProcessingQRScan = false;
 
-  // Tampilkan Step 1, Sembunyikan Step 2
+  try {
+    await stopAllCameras();
+  } catch (e) {
+    console.warn("Stop kamera error:", e);
+  }
+
+  // Reset UI ke Langkah 1
   resetToScanStep1UI();
 
   // Pastikan elemen #reader benar-benar kosong sebelum buat instance baru
-  // Html5Qrcode WAJIB mendapatkan elemen kosong, jika tidak akan gagal diam-diam
   try {
     const readerEl = document.getElementById('reader');
-    if (readerEl) readerEl.innerHTML = '';
-  } catch (e) { }
+    if (readerEl) {
+      // Hapus semua child dan event listener
+      readerEl.innerHTML = '';
+      // Clone dan replace untuk menghapus semua event listener
+      const newReader = readerEl.cloneNode(false);
+      readerEl.parentNode.replaceChild(newReader, readerEl);
+      // Re-assign id
+      newReader.id = 'reader';
+    }
+  } catch (e) {
+    console.warn("Cleanup reader element error:", e);
+  }
 
   const config = {
     fps: 15,
@@ -335,10 +415,12 @@ async function startQRScanner() {
   };
 
   try {
+    // Dapatkan daftar kamera
     let cameraId = null;
     try {
       const devices = await Html5Qrcode.getCameras();
       if (devices && devices.length > 0) {
+        // Cari kamera belakang
         const backCamera = devices.find(device =>
           device.label.toLowerCase().includes('back') ||
           device.label.toLowerCase().includes('rear') ||
@@ -346,13 +428,21 @@ async function startQRScanner() {
           device.label.toLowerCase().includes('0')
         );
         cameraId = backCamera ? backCamera.id : devices[devices.length - 1].id;
+        console.log("Menggunakan kamera:", cameraId);
       }
     } catch (camErr) {
       console.warn("Pemeriksaan daftar kamera gagal:", camErr);
     }
 
+    // Buat instance scanner baru
+    const readerElement = document.getElementById('reader');
+    if (!readerElement) {
+      throw new Error("Element #reader tidak ditemukan");
+    }
+
     html5QrcodeScanner = new Html5Qrcode("reader");
 
+    // Mulai scanning
     if (cameraId) {
       await html5QrcodeScanner.start(
         cameraId,
@@ -372,7 +462,15 @@ async function startQRScanner() {
   } catch (err1) {
     console.warn("Gagal membuka kamera scanner via deviceId/facingMode, mencoba fallback...", err1);
     try {
-      try { await stopAllCameras(); } catch (e) { }
+      // Bersihkan lagi
+      await stopAllCameras();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      const readerElement = document.getElementById('reader');
+      if (readerElement) {
+        readerElement.innerHTML = '';
+      }
+
       html5QrcodeScanner = new Html5Qrcode("reader");
       await html5QrcodeScanner.start(
         { facingMode: "user" },
@@ -383,23 +481,30 @@ async function startQRScanner() {
       console.log("Kamera QR scanner aktif (fallback user).");
     } catch (err2) {
       console.error("Gagal total menyalakan kamera scanner:", err2);
-      showScanResult("Gagal membuka kamera: " + (err2.message || err2.toString()) + ". Tutup aplikasi lain yang sedang menggunakan kamera.", "error");
+      showScanResult("Gagal membuka kamera: " + (err2.message || err2.toString()) + ". Pastikan izin kamera aktif dan tidak ada aplikasi lain yang menggunakan kamera.", "error");
     }
   }
 }
 
+/**
+ * Callback ketika QR Code berhasil di-scan
+ */
 async function onQRScanSuccess(decodedText, decodedResult) {
-  if (isProcessingQRScan) return;
+  // Cegah multiple scan dalam waktu bersamaan
+  if (isProcessingQRScan) {
+    console.log("Scan sedang diproses, abaikan...");
+    return;
+  }
+
+  console.log("QR Code terdeteksi:", decodedText);
 
   try {
-    console.log("QR Code terdeteksi:", decodedText);
-
     let outlet = null;
     let timestamp = null;
     let totpToken = null;
 
+    // Parse QR Code
     if (decodedText.includes("outlet=") && decodedText.includes("totp_token=")) {
-      // 1. Parsal URL atau query string
       let searchParams = null;
       if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
         const url = new URL(decodedText);
@@ -413,19 +518,22 @@ async function onQRScanSuccess(decodedText, decodedResult) {
       timestamp = searchParams.get('timestamp');
       totpToken = searchParams.get('totp_token');
     } else {
-      // 2. Fallback format JSON
+      // Fallback format JSON
       try {
         const json = JSON.parse(decodedText);
         outlet = json.outlet || json.outlet_id;
         timestamp = json.timestamp;
         totpToken = json.totp_token;
-      } catch (e) { }
+      } catch (e) {
+        console.warn("Bukan format JSON, coba parse sebagai string biasa");
+      }
     }
 
     if (!outlet || !totpToken || !timestamp) {
       throw new Error("Parameter QR Code tidak lengkap atau format tidak sesuai.");
     }
 
+    // Set flag processing
     isProcessingQRScan = true;
 
     scannedQRData = {
@@ -438,19 +546,20 @@ async function onQRScanSuccess(decodedText, decodedResult) {
 
     const localNRP = localStorage.getItem('attendance_registered_nrp');
 
-    // Hentikan penanganan callback scanner secara halus
+    // Hentikan scanner
     if (html5QrcodeScanner) {
       try {
-        if (html5QrcodeScanner.isScanning) {
-          html5QrcodeScanner.pause(true);
-        }
-      } catch (e) { }
+        await html5QrcodeScanner.stop();
+      } catch (e) {
+        console.warn("Gagal menghentikan scanner:", e);
+      }
     }
 
-    // Pindahkan transisi eksekusi kamera ke event loop baru agar tidak melempar exception di dalam callback scanner
+    // Transisi ke Langkah 2
     setTimeout(async () => {
       try {
         await stopAllCameras();
+
         if (!localNRP) {
           openSyncOverlay();
         } else {
@@ -458,15 +567,29 @@ async function onQRScanSuccess(decodedText, decodedResult) {
         }
       } catch (err) {
         console.error("Transisi ke Langkah 2 gagal:", err);
-      } finally {
+        showScanResult("Gagal membuka kamera verifikasi: " + (err.message || err.toString()), "error");
+        // Reset dan kembali ke Langkah 1
+        resetToScanStep1UI();
         isProcessingQRScan = false;
+        setTimeout(() => startQRScanner(), 1000);
       }
-    }, 50);
+    }, 300);
 
   } catch (error) {
     isProcessingQRScan = false;
     console.error("Format QR Code tidak valid:", error);
     showScanResult("Format QR Code tidak sesuai. Pastikan memindai QR Code absensi resmi pada layar PC outlet.", "error");
+
+    // Reset scanner setelah error
+    setTimeout(() => {
+      if (html5QrcodeScanner) {
+        try {
+          html5QrcodeScanner.resume();
+        } catch (e) {
+          console.warn("Gagal resume scanner:", e);
+        }
+      }
+    }, 2000);
   }
 }
 
@@ -475,25 +598,43 @@ function onQRScanFailure(error) {
 }
 
 async function cancelScan() {
+  // Reset semua state
   scannedQRData = null;
+  isProcessingQRScan = false;
+  livenessPassed = false;
+  faceVerified = false;
+  baselineSmileRatio = null;
+  latestLiveDescriptor = null;
+
+  // Hapus parameter URL
   try {
     if (window.location.search) {
       window.history.replaceState({}, '', window.location.pathname);
     }
   } catch (e) { }
 
+  // Sembunyikan result
   const resultDiv = document.getElementById('scanResult');
-  if (resultDiv) resultDiv.style.display = 'none';
+  if (resultDiv) {
+    resultDiv.style.display = 'none';
+    resultDiv.className = 'feedback-message';
+  }
 
+  // Stop semua kamera
   await stopAllCameras();
-  resetToScanStep1();
-  await startQRScanner();
+
+  // Reset UI ke Langkah 1
+  resetToScanStep1UI();
+
+  // Start ulang QR scanner dengan delay
+  setTimeout(() => {
+    startQRScanner();
+  }, 300);
 }
 
 /**
  * Memulai ulang scanner QR Code pada Langkah 1 (Atau langsung ke Langkah 2 jika data QR sudah ada)
  */
-let isRestartingScanner = false; // Guard agar tidak ada double-click race condition
 async function restartQRScanner() {
   if (isRestartingScanner) return; // Cegah klik ganda
   isRestartingScanner = true;
@@ -501,39 +642,49 @@ async function restartQRScanner() {
   const btn = document.getElementById('btnRescanQR');
   if (btn) {
     btn.disabled = true;
-    btn.innerText = 'Memulai ulang...';
+    btn.innerHTML = '⏳ Memulai ulang...';
   }
 
   try {
-    const localNRP = localStorage.getItem('attendance_registered_nrp');
-
-    // 1. Jika data QR Code sebelumnya sudah tersimpan dan valid, langsung berlanjut ke Langkah 2!
-    if (scannedQRData && scannedQRData.outlet && scannedQRData.totp_token) {
-      console.log("Data QR Code valid terdeteksi, langsung berlanjut ke Langkah 2:", scannedQRData);
-      if (!localNRP) {
-        await stopAllCameras();
-        openSyncOverlay();
-        return;
-      }
-      await startLivenessCamera();
-      return;
-    }
-
-    // 2. Jika data QR belum ada, bersihkan & mulai ulang kamera QR scanner Langkah 1
+    // RESET semua state scan
     scannedQRData = null;
     isProcessingQRScan = false;
+    livenessPassed = false;
+    faceVerified = false;
+    baselineSmileRatio = null;
+    latestLiveDescriptor = null;
+
+    // Reset UI ke Langkah 1
+    resetToScanStep1UI();
+
+    // Hapus parameter URL jika ada
     try {
       if (window.location.search) {
         window.history.replaceState({}, '', window.location.pathname);
       }
     } catch (e) { }
 
+    // Sembunyikan result
     const resultDiv = document.getElementById('scanResult');
-    if (resultDiv) resultDiv.style.display = 'none';
+    if (resultDiv) {
+      resultDiv.style.display = 'none';
+      resultDiv.className = 'feedback-message';
+    }
 
-    // startQRScanner() sudah memanggil stopAllCameras() di dalamnya, tidak perlu panggil lagi
+    // Hentikan semua kamera terlebih dahulu
+    await stopAllCameras();
+
+    // Beri jeda agar kamera benar-benar release
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // Mulai ulang QR scanner
     await startQRScanner();
 
+    console.log("QR Scanner berhasil direstart");
+
+  } catch (error) {
+    console.error("Error saat restart QR scanner:", error);
+    showScanResult("Gagal memulai ulang scanner: " + (error.message || error.toString()), "error");
   } finally {
     isRestartingScanner = false;
     const btn2 = document.getElementById('btnRescanQR');
@@ -542,38 +693,6 @@ async function restartQRScanner() {
       btn2.innerHTML = `<svg style="width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> Scan Ulang QR Code`;
     }
   }
-}
-
-let baselineSmileRatio = null;
-
-/**
- * Reset tampilan UI saja ke Langkah 1, tanpa menghapus scannedQRData.
- * Digunakan oleh startQRScanner() agar data QR yang sudah di-scan tidak hilang
- * jika kamera restart karena alasan lain.
- */
-function resetToScanStep1UI() {
-  document.getElementById('scanStep1').style.display = 'block';
-  document.getElementById('scanStep2').style.display = 'none';
-  document.getElementById('scanResult').style.display = 'none';
-  livenessPassed = false;
-  faceVerified = false;
-  baselineSmileRatio = null;
-}
-
-/**
- * Reset tampilan UI ke Langkah 1 BESERTA data QR (full reset).
- * Digunakan saat user membatalkan scan atau terjadi error yang memerlukan scan ulang dari awal.
- */
-function resetToScanStep1() {
-  scannedQRData = null;
-  isProcessingQRScan = false;
-  livenessPassed = false;
-  faceVerified = false;
-  baselineSmileRatio = null;
-  latestLiveDescriptor = null;
-  document.getElementById('scanStep1').style.display = 'block';
-  document.getElementById('scanStep2').style.display = 'none';
-  document.getElementById('scanResult').style.display = 'none';
 }
 
 /**
@@ -692,7 +811,7 @@ function checkSmileLiveness(landmarks) {
     return false;
   }
 
-  // Kriteria 1: Bibir melebar setidaknya 14% dari baseline netral pengguna (currentSmileRatio >= baselineSmileRatio * 1.14)
+  // Kriteria 1: Bibir melebar setidaknya 14% dari baseline netral pengguna
   const isWidthStretched = (currentSmileRatio >= baselineSmileRatio * 1.14) && (currentSmileRatio > 0.54);
 
   // Kriteria 2: Terangkatnya sudut bibir

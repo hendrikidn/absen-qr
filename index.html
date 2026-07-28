@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Smart Attendance PWA</title>
-  
+
   <!-- Google Fonts & Tailwind-like CSS variables -->
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  
+
   <!-- CDNs for Libraries -->
   <!-- html5-qrcode for scanning PC Screen QR Code -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
@@ -123,8 +124,15 @@
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     /* Input elements styling */
@@ -160,7 +168,8 @@
     }
 
     /* Camera and Scanner boxes */
-    .scanner-viewport, .camera-viewport {
+    .scanner-viewport,
+    .camera-viewport {
       width: 100%;
       aspect-ratio: 4/3;
       background: #090d16;
@@ -184,7 +193,9 @@
       overflow: hidden;
     }
 
-    .scanner-viewport video, .camera-viewport video, #reader video {
+    .scanner-viewport video,
+    .camera-viewport video,
+    #reader video {
       width: 100% !important;
       height: 100% !important;
       object-fit: cover !important;
@@ -219,10 +230,34 @@
       border-color: #818cf8;
       border-style: solid;
     }
-    .scan-corner.top-left { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-top-left-radius: 12px; }
-    .scan-corner.top-right { top: -2px; right: -2px; border-width: 4px 4px 0 0; border-top-right-radius: 12px; }
-    .scan-corner.bottom-left { bottom: -2px; left: -2px; border-width: 0 0 4px 4px; border-bottom-left-radius: 12px; }
-    .scan-corner.bottom-right { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-bottom-right-radius: 12px; }
+
+    .scan-corner.top-left {
+      top: -2px;
+      left: -2px;
+      border-width: 4px 0 0 4px;
+      border-top-left-radius: 12px;
+    }
+
+    .scan-corner.top-right {
+      top: -2px;
+      right: -2px;
+      border-width: 4px 4px 0 0;
+      border-top-right-radius: 12px;
+    }
+
+    .scan-corner.bottom-left {
+      bottom: -2px;
+      left: -2px;
+      border-width: 0 0 4px 4px;
+      border-bottom-left-radius: 12px;
+    }
+
+    .scan-corner.bottom-right {
+      bottom: -2px;
+      right: -2px;
+      border-width: 0 4px 4px 0;
+      border-bottom-right-radius: 12px;
+    }
 
     .scan-line {
       position: absolute;
@@ -236,9 +271,17 @@
     }
 
     @keyframes scanAnim {
-      0% { top: 5%; }
-      50% { top: 90%; }
-      100% { top: 5%; }
+      0% {
+        top: 5%;
+      }
+
+      50% {
+        top: 90%;
+      }
+
+      100% {
+        top: 5%;
+      }
     }
 
     /* Face indicator overlays */
@@ -298,7 +341,8 @@
       transform: translateY(1px);
     }
 
-    .btn:disabled, .btn-secondary:disabled {
+    .btn:disabled,
+    .btn-secondary:disabled {
       background: transparent !important;
       color: rgba(255, 255, 255, 0.4) !important;
       border: 1px solid rgba(255, 255, 255, 0.15) !important;
@@ -316,7 +360,9 @@
       box-shadow: none !important;
     }
 
-    .btn-loading, .btn-loading:disabled, .btn-loading:hover {
+    .btn-loading,
+    .btn-loading:disabled,
+    .btn-loading:hover {
       background: transparent !important;
       background-color: transparent !important;
       color: rgba(255, 255, 255, 0.4) !important;
@@ -388,16 +434,24 @@
       font-size: 0.9rem;
       font-weight: 600;
       color: #818cf8;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
       display: none;
       z-index: 10;
       animation: pulse 1.5s infinite;
     }
 
     @keyframes pulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-      100% { transform: scale(1); }
+      0% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.05);
+      }
+
+      100% {
+        transform: scale(1);
+      }
     }
 
     /* Offline log badge */
@@ -415,7 +469,10 @@
     /* Loading overlay */
     .loading-overlay {
       position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
       background: rgba(15, 23, 42, 0.9);
       display: flex;
       flex-direction: column;
@@ -425,8 +482,9 @@
     }
 
     .spinner {
-      border: 4px solid rgba(255,255,255,0.1);
-      width: 50px; height: 50px;
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      width: 50px;
+      height: 50px;
       border-radius: 50%;
       border-left-color: var(--primary);
       animation: spin 1s linear infinite;
@@ -434,14 +492,22 @@
     }
 
     @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
     }
 
     /* Overlay & Modal Card for Sync NRP */
     .overlay {
       position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
       background: rgba(15, 23, 42, 0.95);
       display: flex;
       align-items: center;
@@ -461,6 +527,7 @@
     }
   </style>
 </head>
+
 <body>
 
   <!-- Loading screen for initializing face-api models -->
@@ -484,7 +551,7 @@
   </div>
 
   <div class="container">
-    
+
     <!-- Tab Bar -->
     <div class="tab-bar">
       <button class="tab-btn active" onclick="switchView('scan')">Scan Absen</button>
@@ -509,12 +576,15 @@
             </div>
           </div>
         </div>
-        <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top:-10px; margin-bottom: 14px;">
+        <p
+          style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top:-10px; margin-bottom: 14px;">
           Posisikan QR Code di dalam kotak scanner
         </p>
         <button id="btnRescanQR" class="btn btn-secondary" onclick="restartQRScanner()" style="margin-bottom: 16px;">
-          <svg style="width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          <svg style="width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;"
+            viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
           Scan Ulang QR Code
         </button>
@@ -551,13 +621,15 @@
             <div class="face-guide-oval"></div>
           </div>
         </div>
-        
+
         <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-          <button id="btnCapturePhoto" class="btn" onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
+          <button id="btnCapturePhoto" class="btn"
+            onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
           <button class="btn btn-secondary" style="flex:0.5;" onclick="stopRegistrationCamera()">Batal</button>
         </div>
-        
-        <div id="regProgress" style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
+
+        <div id="regProgress"
+          style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
           Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.
         </div>
       </div>
@@ -571,7 +643,8 @@
   <!-- Sync NRP Modal (Diberikan bila di-scan di browser baru yang belum diregistrasi) -->
   <div class="overlay" id="syncNrpOverlay" style="display: none;">
     <div class="modal-card">
-      <h2 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 16px; text-align: center;">Sinkronisasi Profil Wajah</h2>
+      <h2 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 16px; text-align: center;">Sinkronisasi Profil
+        Wajah</h2>
       <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">
         Ponsel ini belum terhubung. Masukkan NRP Anda untuk mengunduh sampel wajah yang sudah terdaftar di cloud.
       </p>
@@ -587,4 +660,5 @@
 
   <script src="pwa_app.js?v=3.5" type="text/javascript"></script>
 </body>
+
 </html>
