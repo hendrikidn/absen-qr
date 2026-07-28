@@ -585,10 +585,11 @@ async function startQRScanner() {
 async function onQRScanSuccess(decodedText, decodedResult) {
   // Cegah multiple scan dalam waktu bersamaan
   if (isProcessingQRScan) {
-    console.log("Scan sedang diproses, abaikan...");
-    return;
+    return; // Silent return, sudah diproses
   }
 
+  // Tampilkan QR terdeteksi di debug panel
+  dbgLog(`🔎 QR terdeteksi! (${decodedText.length} chars)`);
   console.log("QR Code terdeteksi:", decodedText);
 
   try {
@@ -618,12 +619,14 @@ async function onQRScanSuccess(decodedText, decodedResult) {
         timestamp = json.timestamp;
         totpToken = json.totp_token;
       } catch (e) {
-        console.warn("Bukan format JSON, coba parse sebagai string biasa");
+        console.warn("Bukan format JSON:", decodedText.substring(0, 80));
       }
     }
 
+    dbgLog(`📦 outlet=${outlet}, timestamp=${timestamp}, totp=${totpToken ? totpToken.substring(0,8)+'...' : 'null'}`);
+
     if (!outlet || !totpToken || !timestamp) {
-      throw new Error("Parameter QR Code tidak lengkap atau format tidak sesuai.");
+      throw new Error("Parameter QR Code tidak lengkap: outlet=" + outlet + " totp=" + totpToken + " ts=" + timestamp);
     }
 
     // Set flag processing
@@ -636,30 +639,38 @@ async function onQRScanSuccess(decodedText, decodedResult) {
     };
 
     console.log("QR Code baru berhasil diproses:", scannedQRData);
+    dbgLog('✅ QR valid! Menjeda scanner...');
 
     const localNRP = localStorage.getItem('attendance_registered_nrp');
 
-    // Hentikan scanner
+    // PENTING: Gunakan pause() bukan stop() dari dalam callback scanner!
+    // stop() di dalam callback menyebabkan DEADLOCK karena library sedang
+    // mengeksekusi loop scan-nya sendiri.
     if (html5QrcodeScanner) {
       try {
-        await html5QrcodeScanner.stop();
+        html5QrcodeScanner.pause(true); // pause = aman dipanggil dari callback
+        dbgLog('⏸ Scanner dijeda (pause)');
       } catch (e) {
-        console.warn("Gagal menghentikan scanner:", e);
+        console.warn("Pause scanner warning:", e);
       }
     }
 
-    // Transisi ke Langkah 2
+    // Transisi ke Langkah 2 di event loop baru agar tidak konflik dengan callback scanner
+    dbgLog('⏳ Menunggu 300ms lalu transisi ke Langkah 2...');
     setTimeout(async () => {
       try {
-        await stopAllCameras();
+        await stopAllCameras(); // stop penuh dilakukan di sini, di luar callback
+        dbgLog('✅ Kamera dihentikan, membuka kamera depan...');
 
         if (!localNRP) {
           openSyncOverlay();
         } else {
           await startLivenessCamera();
+          dbgLog('✅ Kamera depan aktif — Langkah 2 dimulai!');
         }
       } catch (err) {
         console.error("Transisi ke Langkah 2 gagal:", err);
+        dbgLog('❌ Transisi gagal: ' + (err.message || err.toString()));
         showScanResult("Gagal membuka kamera verifikasi: " + (err.message || err.toString()), "error");
         // Reset dan kembali ke Langkah 1
         resetToScanStep1UI();
@@ -671,16 +682,13 @@ async function onQRScanSuccess(decodedText, decodedResult) {
   } catch (error) {
     isProcessingQRScan = false;
     console.error("Format QR Code tidak valid:", error);
-    showScanResult("Format QR Code tidak sesuai. Pastikan memindai QR Code absensi resmi pada layar PC outlet.", "error");
+    dbgLog('❌ QR gagal parse: ' + error.message);
+    showScanResult("Format QR Code tidak sesuai: " + error.message, "error");
 
-    // Reset scanner setelah error
+    // Resume scanner agar bisa scan lagi
     setTimeout(() => {
       if (html5QrcodeScanner) {
-        try {
-          html5QrcodeScanner.resume();
-        } catch (e) {
-          console.warn("Gagal resume scanner:", e);
-        }
+        try { html5QrcodeScanner.resume(); } catch (e) { }
       }
     }, 2000);
   }
