@@ -1660,10 +1660,12 @@ async function uploadFaceEmbeddingToCloud(nrp, embedding, deviceId) {
 /**
  * Menyinkronkan Profil Wajah Karyawan dari Cloud jika PWA dibuka di browser baru
  */
+/**
+ * Menyinkronkan Profil Wajah Karyawan dari Cloud jika PWA dibuka di browser baru / setelah clear cache
+ */
 async function syncFaceProfile() {
-  const syncResult = document.getElementById('syncResult');
   const syncNrpInput = document.getElementById('syncNRP');
-  const nrp = syncNrpInput.value.trim();
+  const nrp = syncNrpInput ? syncNrpInput.value.trim() : '';
 
   if (!nrp) {
     showSyncResult("Harap masukkan NRP Anda.", "error");
@@ -1675,57 +1677,112 @@ async function syncFaceProfile() {
     return;
   }
 
-  showSyncResult("Mendownload profil wajah dari cloud...", "success");
+  showSyncResult("⏳ Memeriksa profil wajah NRP " + nrp + " di cloud...", "success");
 
   try {
     const deviceId = getOrCreateDeviceId();
-    const url = `${GAS_URL}?action=get_face_embedding&nrp=${nrp}&device_id=${deviceId}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    let data = null;
 
-    if (data.status === "success") {
-      const embeddingArray = data.message;
+    // 1. Coba GET dengan action=get_face_embedding & device_id
+    try {
+      const url = `${GAS_URL}?action=get_face_embedding&nrp=${encodeURIComponent(nrp)}&device_id=${encodeURIComponent(deviceId)}`;
+      const response = await fetch(url, { redirect: "follow" });
+      const text = await response.text();
+      data = JSON.parse(text);
+    } catch (e) { }
 
-      // Simpan di localStorage browser baru ini
+    // 2. Jika gagal, coba GET tanpa device_id (kasus clear cache / device_id baru)
+    if (!data || (data.status !== "success" && data.status !== "ok")) {
+      try {
+        const urlNoDevice = `${GAS_URL}?action=get_face_embedding&nrp=${encodeURIComponent(nrp)}`;
+        const resp2 = await fetch(urlNoDevice, { redirect: "follow" });
+        const text2 = await resp2.text();
+        const data2 = JSON.parse(text2);
+        if (data2 && (data2.status === "success" || data2.status === "ok")) {
+          data = data2;
+        }
+      } catch (e) { }
+    }
+
+    // 3. Fallback ketiga: coba POST request
+    if (!data || (data.status !== "success" && data.status !== "ok")) {
+      try {
+        const postResp = await fetch(GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "get_face_embedding", nrp: nrp, device_id: deviceId })
+        });
+        const postText = await postResp.text();
+        const postData = JSON.parse(postText);
+        if (postData && (postData.status === "success" || postData.status === "ok")) {
+          data = postData;
+        }
+      } catch (e) { }
+    }
+
+    if (data && (data.status === "success" || data.status === "ok")) {
+      const embeddingArray = data.message || data.face_embedding || data.embedding || data.data;
+
+      // Simpan di localStorage browser ini
       localStorage.setItem('attendance_registered_nrp', nrp);
-      localStorage.setItem('attendance_registered_embeddings', JSON.stringify(embeddingArray));
+      if (embeddingArray) {
+        localStorage.setItem('attendance_registered_embeddings', typeof embeddingArray === 'string' ? embeddingArray : JSON.stringify(embeddingArray));
+        registeredEmbeddings = embeddingArray;
+      }
+      localStorage.setItem('attendance_registered_device_id', deviceId);
 
-      // Update variabel global
-      registeredEmbeddings = embeddingArray;
-
-      showSyncResult("Perangkat berhasil disinkronkan! Profil wajah " + nrp + " diunduh.", "success");
+      showSyncResult("✅ Perangkat berhasil disinkronkan! Profil NRP " + nrp + " terverifikasi.", "success");
 
       setTimeout(() => {
         closeSyncOverlay();
-        // Jalankan kamera verifikasi wajah langsung jika data QR sudah siap
         if (scannedQRData) {
           startLivenessCamera();
         } else {
           startQRScanner();
         }
-      }, 2000);
+      }, 1800);
     } else {
-      showSyncResult("Gagal: " + data.message, "error");
+      const serverMsg = (data && data.message) ? data.message : ("NRP (" + nrp + ") belum terdaftar di database cloud.");
+      showSyncResult("❌ " + serverMsg + "<br><br><span style='font-size:0.8rem; color:#cbd5e1;'>Jika Anda belum mendaftar / baru menghapus cache, silakan klik <strong>Registrasi Baru</strong> di bawah.</span>", "error");
     }
   } catch (err) {
     console.error("Gagal sinkronisasi wajah:", err);
-    showSyncResult("NRP tidak ditemukan atau belum terdaftar wajahnya di cloud.", "error");
+    showSyncResult("❌ Gagal terhubung ke server cloud: " + (err.message || err.toString()), "error");
   }
 }
 
 function closeSyncOverlay() {
-  document.getElementById('syncNrpOverlay').style.display = 'none';
-  document.getElementById('syncResult').style.display = 'none';
-  document.getElementById('syncNRP').value = '';
+  const overlay = document.getElementById('syncNrpOverlay');
+  const result = document.getElementById('syncResult');
+  const input = document.getElementById('syncNRP');
+  if (overlay) overlay.style.display = 'none';
+  if (result) result.style.display = 'none';
+  if (input) input.value = '';
+}
+
+function goToRegistrationFromOverlay() {
+  const syncNRPInput = document.getElementById('syncNRP');
+  const regNRPInput = document.getElementById('regNRP');
+  const nrpVal = syncNRPInput ? syncNRPInput.value.trim() : '';
+
+  closeSyncOverlay();
+  switchView('register');
+
+  if (regNRPInput && nrpVal) {
+    regNRPInput.value = nrpVal;
+  }
 }
 
 function openSyncOverlay() {
-  document.getElementById('syncNrpOverlay').style.display = 'flex';
+  const overlay = document.getElementById('syncNrpOverlay');
+  if (overlay) overlay.style.display = 'flex';
 }
 
 function showSyncResult(message, type) {
   const resultDiv = document.getElementById('syncResult');
-  resultDiv.innerText = message;
-  resultDiv.className = "feedback-message " + (type === 'success' ? 'feedback-success' : 'feedback-error');
-  resultDiv.style.display = 'block';
+  if (resultDiv) {
+    resultDiv.innerHTML = message;
+    resultDiv.className = "feedback-message " + (type === 'success' ? 'feedback-success' : 'feedback-error');
+    resultDiv.style.display = 'block';
+  }
 }

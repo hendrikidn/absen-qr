@@ -1,4 +1,4 @@
-const CACHE_NAME = 'attendance-pwa-v8';
+const CACHE_NAME = 'attendance-pwa-v9';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -43,19 +43,32 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const url = event.request.url;
+
+  // Jangan intersepsi API request ke Google Apps Script / external API / non-GET
+  if (
+    event.request.method !== 'GET' ||
+    url.includes('script.google.com') ||
+    url.includes('script.googleusercontent.com')
+  ) {
+    return; // Serahkan langsung ke jaringan native browser
+  }
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
       return fetch(event.request).then((networkResponse) => {
-        if (event.request.method === 'GET' && networkResponse.status === 200) {
+        if (networkResponse.status === 200 && url.startsWith('http')) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
+            cache.put(event.request, responseToCache).catch(() => {});
           });
         }
         return networkResponse;
+      }).catch(err => {
+        console.warn('[Service Worker] Fetch failed:', err);
       });
     })
   );
