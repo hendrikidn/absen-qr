@@ -289,7 +289,17 @@ async function startQRScanner() {
 
   const config = { 
     fps: 15,
-    aspectRatio: 1.333333 // 4:3 matching viewport (full frame scanning)
+    qrbox: (viewfinderWidth, viewfinderHeight) => {
+      const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+      const qrboxSize = Math.floor(minEdge * 0.8);
+      return {
+        width: qrboxSize,
+        height: qrboxSize
+      };
+    },
+    experimentalFeatures: {
+      useBarCodeDetectorIfSupported: true
+    }
   };
 
   try {
@@ -346,51 +356,73 @@ async function startQRScanner() {
   }
 }
 
-async function onQRScanSuccess(decodedText, decodedResult) {
-  try {
-    console.log("QR Code terdeteksi:", decodedText);
+/**
+ * Parsal Payload QR Code (Mendukung URL, Query String, dan JSON)
+ */
+function parseQRPayload(decodedText) {
+  if (!decodedText || typeof decodedText !== 'string') return null;
 
-    let outlet = null;
-    let timestamp = null;
-    let totpToken = null;
+  let outlet = null;
+  let timestamp = null;
+  let totpToken = null;
 
-    if (decodedText.includes("outlet=") && decodedText.includes("totp_token=")) {
-      // 1. Parsal URL atau query string
+  // 1. Parsal jika berupa URL atau Query String
+  if (decodedText.includes("outlet=") || decodedText.includes("totp_token=") || decodedText.startsWith("http")) {
+    try {
       let searchParams = null;
       if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
         const url = new URL(decodedText);
         searchParams = url.searchParams;
       } else {
-        const queryString = decodedText.includes("?") ? decodedText.split("?")[1] : decodedText;
+        const queryString = decodedText.includes("?") ? decodedText.substring(decodedText.indexOf("?") + 1) : decodedText;
         searchParams = new URLSearchParams(queryString);
       }
 
-      outlet = searchParams.get('outlet') || searchParams.get('outlet_id');
-      timestamp = searchParams.get('timestamp');
-      totpToken = searchParams.get('totp_token');
-    } else {
-      // 2. Fallback format JSON
-      try {
-        const json = JSON.parse(decodedText);
-        outlet = json.outlet || json.outlet_id;
-        timestamp = json.timestamp;
-        totpToken = json.totp_token;
-      } catch(e){}
+      outlet = searchParams.get('outlet') || searchParams.get('outlet_id') || searchParams.get('outlet_name');
+      timestamp = searchParams.get('timestamp') || searchParams.get('time') || searchParams.get('ts');
+      totpToken = searchParams.get('totp_token') || searchParams.get('totp') || searchParams.get('token');
+    } catch(e) {
+      console.warn("Parsing URL QR gagal:", e);
     }
+  }
 
-    if (!outlet || !totpToken || !timestamp) {
-      throw new Error("Parameter QR Code tidak lengkap atau format tidak sesuai.");
-    }
+  // 2. Fallback parsal dari JSON
+  if (!outlet || !totpToken || !timestamp) {
+    try {
+      const json = JSON.parse(decodedText);
+      outlet = json.outlet || json.outlet_id || json.outlet_name;
+      timestamp = json.timestamp || json.time || json.ts;
+      totpToken = json.totp_token || json.totp || json.token;
+    } catch(e) {}
+  }
 
-    scannedQRData = {
-      outlet: outlet,
+  if (outlet && totpToken && timestamp) {
+    return {
+      outlet: decodeURIComponent(outlet).trim(),
       timestamp: Number(timestamp),
-      totp_token: totpToken
+      totp_token: String(totpToken).trim()
     };
+  }
+  return null;
+}
 
-    console.log("QR Code baru berhasil diproses:", scannedQRData);
+async function onQRScanSuccess(decodedText, decodedResult) {
+  try {
+    console.log("Raw QR Code terdeteksi:", decodedText);
 
-    // Bersihkan parameter URL dari address bar agar tidak menumpuk parameter lama
+    const parsedData = parseQRPayload(decodedText);
+    if (!parsedData) {
+      console.error("Payload QR Code tidak dapat diproses:", decodedText);
+      showScanResult("Format QR Code salah. Pastikan memindai QR Code absensi resmi pada layar PC outlet.", "error");
+      return;
+    }
+
+    scannedQRData = parsedData;
+    console.log("QR Code valid berhasil diproses:", scannedQRData);
+
+    showScanResult("✅ QR Code Terbaca! Membuka verifikasi wajah...", "success");
+
+    // Bersihkan parameter URL dari address bar
     try {
       if (window.location.search) {
         window.history.replaceState({}, document.title, window.location.pathname);
@@ -405,11 +437,12 @@ async function onQRScanSuccess(decodedText, decodedResult) {
     }
 
     // 3. Hentikan scanner & buka langsung Kamera Liveness Langkah 2
+    await stopAllCameras();
     await startLivenessCamera();
 
   } catch (error) {
-    console.error("Format QR Code tidak valid:", error);
-    showScanResult("Format QR Code tidak sesuai. Pastikan memindai QR Code absensi resmi pada layar PC outlet.", "error");
+    console.error("Gagal memproses QR Code:", error);
+    showScanResult("Gagal membaca QR Code: " + (error.message || error.toString()), "error");
   }
 }
 
