@@ -511,15 +511,124 @@ async function startQRScanner() {
   // Beri waktu browser render
   await new Promise(r => setTimeout(r, 100));
 
-  // Cek apakah BarcodeDetector tersedia (Chrome Android 83+)
+  // Cek engine scanner yang tersedia: BarcodeDetector -> jsQR -> Html5Qrcode (ZXing)
   const hasBarcodeDetector = ('BarcodeDetector' in window);
-  dbgLog(`🔬 BarcodeDetector: ${hasBarcodeDetector ? 'TERSEDIA ✅' : 'tidak tersedia, pakai ZXing'}`);
-  console.log('[DBG] BarcodeDetector available:', hasBarcodeDetector);
+  const hasJsQR = (typeof jsQR !== 'undefined');
+
+  dbgLog(`🔬 Engine: BarcodeDetector=${hasBarcodeDetector ? '✅' : '❌'}, jsQR=${hasJsQR ? '✅' : '❌'}`);
+  console.log('[DBG] Engines:', { BarcodeDetector: hasBarcodeDetector, jsQR: hasJsQR });
 
   if (hasBarcodeDetector) {
     await _startNativeBarcodeScanner(readerEl);
+  } else if (hasJsQR) {
+    await _startJsQRScanner(readerEl);
   } else {
     await _startHtml5QrcodeScanner(readerEl);
+  }
+}
+
+/**
+ * Scanner menggunakan library jsQR (Direct Canvas Capture + Ultra-fast Decode)
+ * Sangat presisi untuk membaca QR code dari layar monitor PC
+ */
+async function _startJsQRScanner(containerEl) {
+  dbgLog('⚡ Memulai jsQR Scanner (High-Precision Canvas Mode)...');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+    _nativeScannerStream = stream;
+
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:14px;';
+    video.srcObject = stream;
+    containerEl.appendChild(video);
+    _nativeScannerVideo = video;
+
+    await new Promise((resolve) => {
+      video.onloadedmetadata = resolve;
+      setTimeout(resolve, 2000);
+    });
+    await video.play().catch(e => console.warn('video.play() warning:', e));
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    dbgLog('✅ Kamera jsQR aktif! Mulai scan QR layar PC...');
+    console.log('[DBG] jsQR scanner: video size', video.videoWidth, 'x', video.videoHeight);
+
+    html5QrcodeScanner = {
+      getState: () => 2,
+      stop: async () => {
+        if (_nativeScannerInterval) clearInterval(_nativeScannerInterval);
+        _nativeScannerInterval = null;
+        if (_nativeScannerStream) {
+          _nativeScannerStream.getTracks().forEach(t => t.stop());
+          _nativeScannerStream = null;
+        }
+        if (_nativeScannerVideo) {
+          _nativeScannerVideo.srcObject = null;
+          _nativeScannerVideo = null;
+        }
+        console.log('[DBG] jsQR scanner: stopped');
+      },
+      pause: (stopVideo) => {
+        if (_nativeScannerInterval) clearInterval(_nativeScannerInterval);
+        _nativeScannerInterval = null;
+        if (stopVideo && _nativeScannerVideo) _nativeScannerVideo.pause();
+        console.log('[DBG] jsQR scanner: paused');
+      },
+      clear: () => {
+        if (containerEl) containerEl.innerHTML = '';
+      }
+    };
+
+    let failCount = 0, failTimer = null;
+    _nativeScannerInterval = setInterval(async () => {
+      if (isProcessingQRScan) return;
+      if (!video.videoWidth || !video.videoHeight) return;
+
+      failCount++;
+      if (!failTimer) {
+        failTimer = setTimeout(() => {
+          dbgLog(`🔄 jsQR scan attempts: ${failCount} / 2 detik`);
+          const el = document.getElementById('dbgScannerState');
+          if (el) el.innerText = `⚡ jsQR scanner aktif | attempts: ${failCount}`;
+          failCount = 0; failTimer = null;
+        }, 2000);
+      }
+
+      // Gunakan resolusi optimal untuk jsQR performance
+      const scanWidth = Math.min(video.videoWidth, 800);
+      const scanHeight = Math.floor(video.videoHeight * (scanWidth / video.videoWidth));
+
+      canvas.width = scanWidth;
+      canvas.height = scanHeight;
+      ctx.drawImage(video, 0, 0, scanWidth, scanHeight);
+
+      const imageData = ctx.getImageData(0, 0, scanWidth, scanHeight);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "dontInvert"
+      });
+
+      if (code && code.data && code.data.trim() !== '') {
+        console.log('[DBG] QR code detected by jsQR:', code.data);
+        await onQRScanSuccess(code.data, code);
+      }
+    }, 100);
+
+  } catch (err) {
+    dbgLog(`❌ jsQR scanner error: ${err.message}`);
+    console.error('[DBG] _startJsQRScanner error:', err);
+    dbgLog('⬇️ Fallback ke Html5Qrcode (ZXing)...');
+    await _startHtml5QrcodeScanner(containerEl);
   }
 }
 

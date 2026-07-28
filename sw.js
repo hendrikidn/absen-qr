@@ -1,9 +1,10 @@
-const CACHE_NAME = 'attendance-pwa-v7';
+const CACHE_NAME = 'attendance-pwa-v8';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './pwa_app.js',
   './qrcode.min.js',
+  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
   'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js',
   'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/tiny_face_detector_model-weights_manifest.json',
   'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/tiny_face_detector_model-shard1',
