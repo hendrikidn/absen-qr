@@ -842,6 +842,7 @@ function stopRegistrationCamera() {
     btnCapture.classList.remove('btn-loading', 'btn-secondary');
     btnCapture.className = 'btn';
     btnCapture.removeAttribute('style');
+    btnCapture.style.display = 'block';
     btnCapture.innerHTML = 'Ambil Foto';
   }
   if (area) area.style.display = 'none';
@@ -858,13 +859,12 @@ async function captureFaceEmbeddings(btnElement) {
     if (btnCapture) {
       btnCapture.disabled = loading;
       if (loading) {
-        btnCapture.classList.add('btn-loading', 'btn-secondary');
-        btnCapture.setAttribute('style', 'background: transparent !important; background-color: transparent !important; color: rgba(255,255,255,0.4) !important; border: 1px solid rgba(255,255,255,0.2) !important; pointer-events: none !important; opacity: 0.6 !important;');
-        btnCapture.innerHTML = '⏳ Memproses...';
+        btnCapture.style.display = 'none';
       } else {
         btnCapture.classList.remove('btn-loading', 'btn-secondary');
         btnCapture.removeAttribute('style');
         btnCapture.className = 'btn';
+        btnCapture.style.display = 'block';
         btnCapture.innerHTML = 'Ambil Foto';
       }
     }
