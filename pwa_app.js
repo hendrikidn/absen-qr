@@ -284,15 +284,20 @@ async function switchView(viewName) {
     // Reset UI ke Langkah 1
     resetToScanStep1UI();
 
-    // Tampilkan view scan
-    document.getElementById('viewScan').classList.add('view-screen active');
+    // Tampilkan view scan — cukup tambahkan 'active' saja karena 'view-screen' sudah ada di HTML
+    // JANGAN classList.add('view-screen active') karena spasi di dalam string menyebabkan DOMException!
+    document.getElementById('viewScan').classList.add('active');
+    console.log('[DBG] switchView: viewScan.classList =', document.getElementById('viewScan').className);
 
     // Start ulang QR scanner dengan delay agar kamera benar-benar release
     setTimeout(() => {
+      console.log('[DBG] switchView: memanggil startQRScanner() setelah 500ms');
       startQRScanner();
     }, 500);
   } else {
-    document.getElementById('viewRegister').classList.add('view-screen active');
+    // JANGAN classList.add('view-screen active') — hanya tambahkan 'active'
+    document.getElementById('viewRegister').classList.add('active');
+    console.log('[DBG] switchView: viewRegister.classList =', document.getElementById('viewRegister').className);
   }
 }
 
