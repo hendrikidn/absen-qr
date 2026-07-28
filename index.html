@@ -640,6 +640,21 @@
       box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
       animation: fadeIn 0.3s ease;
     }
+
+    /* Sync Badge & View */
+    .sync-icon-badge {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(192, 132, 252, 0.25));
+      border: 1px solid rgba(129, 140, 248, 0.4);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 1.8rem;
+      box-shadow: 0 0 24px rgba(99, 102, 241, 0.35);
+    }
   </style>
 </head>
 
@@ -667,12 +682,45 @@
 
   <div class="container">
 
-    <!-- Tab Bar -->
+    <!-- Tab Bar (Hanya tampil jika HP sudah terhubung/terdaftar) -->
     <div class="tab-bar">
       <button class="tab-btn active" onclick="switchView('scan')">Scan Absen</button>
       <button class="tab-btn" onclick="switchView('register')">
         Registrasi <span id="offlineBadge" class="offline-count" style="display:none;">0</span>
       </button>
+    </div>
+
+    <!-- VIEW SYNC: SINKRONISASI PROFIL WAJAH (KHUSUS PONSEL BELUM TERHUBUNG) -->
+    <div id="viewSync" class="view-screen" style="display: none;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <div class="sync-icon-badge">
+          <span>📲</span>
+        </div>
+        <h2 style="font-size: 1.4rem; font-weight: 700; background: linear-gradient(to right, #818cf8, #c084fc); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px;">
+          Sinkronisasi Profil Wajah
+        </h2>
+        <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; max-width: 340px; margin: 0 auto;">
+          Ponsel ini belum terhubung. Masukkan NRP Anda untuk menyambungkan perangkat dan mengunduh profil wajah terdaftar.
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label for="syncNRP">Nomor Registrasi Pegawai (NRP)</label>
+        <input type="text" id="syncNRP" placeholder="Contoh: SNI123456" style="text-align: center; font-weight: 600; letter-spacing: 0.05em;">
+      </div>
+
+      <button id="btnSyncProfile" class="btn" onclick="this.style.display='none'; this.disabled=true; syncFaceProfile(this);" style="margin-bottom: 12px;">
+        ⚡ Sinkronkan Perangkat
+      </button>
+
+      <div id="syncResult" class="feedback-message" style="margin-top: 10px;"></div>
+
+      <div style="margin-top: 24px; text-align: center; border-top: 1px dashed rgba(255, 255, 255, 0.1); padding-top: 16px;">
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Belum pernah mendaftarkan wajah Anda?</p>
+        <button type="button" class="btn btn-secondary" style="font-size: 0.85rem; padding: 10px;" onclick="enableRegistrationForUnsyncedDevice();">
+          ➕ Registrasi Wajah Baru
+        </button>
+      </div>
     </div>
 
     <!-- VIEW 1: SCAN ABSENSI (DEFAULT) -->
@@ -804,7 +852,7 @@
     </div>
   </div>
 
-  <script src="pwa_app.js?v=5.4" type="text/javascript"></script>
+  <script src="pwa_app.js?v=5.5" type="text/javascript"></script>
 </body>
 
 </html>

@@ -1972,12 +1972,10 @@ async function syncFaceProfile(btnElement) {
 }
 
 function closeSyncOverlay() {
-  const overlay = document.getElementById('syncNrpOverlay');
   const result = document.getElementById('syncResult');
   const input = document.getElementById('syncNRP');
   const btnSync = document.getElementById('btnSyncProfile');
 
-  if (overlay) overlay.style.display = 'none';
   if (result) result.style.display = 'none';
   if (input) input.value = '';
 
@@ -1987,26 +1985,78 @@ function closeSyncOverlay() {
     btnSync.className = 'btn';
     btnSync.style.display = 'block';
     btnSync.style.marginBottom = '12px';
-    btnSync.innerHTML = 'Sinkronkan Perangkat';
+    btnSync.innerHTML = '⚡ Sinkronkan Perangkat';
   }
+
+  checkDeviceSyncState();
 }
 
 function goToRegistrationFromOverlay() {
-  const syncNRPInput = document.getElementById('syncNRP');
-  const regNRPInput = document.getElementById('regNRP');
-  const nrpVal = syncNRPInput ? syncNRPInput.value.trim() : '';
-
-  closeSyncOverlay();
-  switchView('register');
-
-  if (regNRPInput && nrpVal) {
-    regNRPInput.value = nrpVal;
-  }
+  enableRegistrationForUnsyncedDevice();
 }
 
 function openSyncOverlay() {
-  const overlay = document.getElementById('syncNrpOverlay');
-  if (overlay) overlay.style.display = 'flex';
+  checkDeviceSyncState();
+}
+
+/**
+ * Memeriksa apakah Ponsel sudah terhubung / disinkronkan.
+ * Jika BELUM: sembunyikan Tab Bar dan tampilkan Form Sinkronisasi di dalam kartu utama.
+ * Jika SUDAH: tampilkan Tab Bar dan buka Layar Scan Absen.
+ */
+function checkDeviceSyncState() {
+  const tabBar = document.querySelector('.tab-bar');
+  const viewSync = document.getElementById('viewSync');
+  const viewScan = document.getElementById('viewScan');
+  const viewRegister = document.getElementById('viewRegister');
+
+  const registeredNRP = localStorage.getItem('attendance_registered_nrp');
+  const registeredEmbeddings = localStorage.getItem('attendance_registered_embeddings');
+
+  if (registeredNRP && registeredEmbeddings) {
+    if (tabBar) tabBar.style.display = 'flex';
+    if (viewSync) {
+      viewSync.style.display = 'none';
+      viewSync.classList.remove('active');
+    }
+    if (viewScan && currentView === 'scan') {
+      viewScan.style.display = 'block';
+      viewScan.classList.add('active');
+    }
+  } else {
+    if (tabBar) tabBar.style.display = 'none';
+    if (viewScan) {
+      viewScan.style.display = 'none';
+      viewScan.classList.remove('active');
+    }
+    if (viewRegister) {
+      viewRegister.style.display = 'none';
+      viewRegister.classList.remove('active');
+    }
+    if (viewSync) {
+      viewSync.style.display = 'block';
+      viewSync.classList.add('active');
+    }
+  }
+}
+
+/**
+ * Mengaktifkan registrasi untuk perangkat yang belum disinkronkan
+ */
+function enableRegistrationForUnsyncedDevice() {
+  const tabBar = document.querySelector('.tab-bar');
+  const viewSync = document.getElementById('viewSync');
+  const viewRegister = document.getElementById('viewRegister');
+
+  if (tabBar) tabBar.style.display = 'flex';
+  if (viewSync) {
+    viewSync.style.display = 'none';
+    viewSync.classList.remove('active');
+  }
+  if (viewRegister) {
+    viewRegister.style.display = 'block';
+  }
+  switchView('register');
 }
 
 function showSyncResult(message, type) {
@@ -2018,9 +2068,13 @@ function showSyncResult(message, type) {
   }
 }
 
-// Inisialisasi visibilitas tombol jenis absensi saat aplikasi dibuka
+// Inisialisasi visibilitas tombol jenis absensi dan status sinkronisasi perangkat saat aplikasi dibuka
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', updateAttendanceTypeVisibility);
+  document.addEventListener('DOMContentLoaded', () => {
+    updateAttendanceTypeVisibility();
+    checkDeviceSyncState();
+  });
 } else {
   updateAttendanceTypeVisibility();
+  checkDeviceSyncState();
 }
