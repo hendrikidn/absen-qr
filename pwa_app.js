@@ -310,6 +310,19 @@ function cancelScan() {
   startQRScanner();
 }
 
+/**
+ * Memulai ulang scanner QR Code pada Langkah 1
+ */
+async function restartQRScanner() {
+  const resultDiv = document.getElementById('scanResult');
+  if (resultDiv) resultDiv.style.display = 'none';
+  showScanResult("⏳ Memulai ulang kamera QR Code scanner...", "success");
+  await startQRScanner();
+  setTimeout(() => {
+    if (resultDiv) resultDiv.style.display = 'none';
+  }, 1500);
+}
+
 let baselineSmileRatio = null;
 
 function resetToScanStep1() {
@@ -763,9 +776,15 @@ async function captureFaceEmbeddings() {
 
   const video = document.getElementById('regFaceVideo');
   const countSpan = document.getElementById('capturedCount');
-  const nrp = document.getElementById('regNRP').value.trim();
+  const nrpInput = document.getElementById('regNRP');
+  const nrp = nrpInput ? nrpInput.value.trim() : '';
 
-  showRegResult("Menganalisis wajah Anda...", "success");
+  if (!nrp) {
+    showRegResult("Harap masukkan NRP Anda sebelum mendaftar.", "error");
+    return;
+  }
+
+  showRegResult("⏳ Memproses & memverifikasi registrasi di server cloud...", "success");
 
   // Deteksi wajah & ekstrak deskriptor
   const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
@@ -773,30 +792,33 @@ async function captureFaceEmbeddings() {
     .withFaceDescriptor();
 
   if (detection) {
-    // Simpan embedding wajah secara lokal di IndexedDB/LocalStorage
-    // Di aplikasi nyata, kumpulkan 3 sampel lalu rata-ratakan embedding-nya.
-    // Di sini kita langsung simpan embedding (berupa array float32)
     const embeddingArray = Array.from(detection.descriptor);
-
     const deviceId = getOrCreateDeviceId();
 
+    // 1. Kirim registrasi wajah & Device ID ke server cloud Google Sheets DULU untuk validasi
+    const resData = await uploadFaceEmbeddingToCloud(nrp, embeddingArray, deviceId);
+
+    // 2. Jika server menolak registrasi (misal: Device sudah dipakai oleh NRP lain)
+    if (resData && resData.status === "error") {
+      console.warn("Registrasi ditolak server:", resData.message);
+      showRegResult("❌ Ditolak Server: " + resData.message, "error");
+      return;
+    }
+
+    // 3. Jika server menyetujui, simpan data ke LocalStorage HP
     localStorage.setItem('attendance_registered_nrp', nrp);
     localStorage.setItem('attendance_registered_embeddings', JSON.stringify(embeddingArray));
     localStorage.setItem('attendance_registered_device_id', deviceId);
-
-    // Kirim registrasi wajah & Device ID ke cloud Google Sheets
-    uploadFaceEmbeddingToCloud(nrp, embeddingArray, deviceId);
+    registeredEmbeddings = embeddingArray;
 
     countSpan.innerText = "3"; // Simulasi selesai
-    showRegResult("Registrasi Wajah NRP " + nrp + " Sukses! Device ID (" + deviceId + ") & Data Wajah tersimpan di tab Face_Embedding.", "success");
-
-    // Perbarui referensi global
-    registeredEmbeddings = embeddingArray;
+    const serverMessage = resData && resData.message ? resData.message : ("Registrasi Wajah NRP " + nrp + " Berhasil!");
+    showRegResult("✅ " + serverMessage, "success");
 
     setTimeout(() => {
       stopRegistrationCamera();
       switchView('scan');
-    }, 3000);
+    }, 3500);
 
   } else {
     showRegResult("Wajah tidak terdeteksi. Posisikan wajah Anda tegak lurus di dalam oval panduan.", "error");
@@ -816,8 +838,8 @@ function showRegResult(message, type) {
 async function uploadFaceEmbeddingToCloud(nrp, embedding, deviceId) {
   const activeDeviceId = deviceId || getOrCreateDeviceId();
   if (!navigator.onLine) {
-    console.log("Registrasi wajah cloud ditunda (offline). Data wajah disimpan lokal.");
-    return;
+    console.log("Registrasi wajah cloud ditunda (offline).");
+    return { status: "error", message: "Koneksi internet terputus. Mohon hubungkan ke internet untuk melakukan registrasi." };
   }
   try {
     const payload = {
@@ -827,15 +849,26 @@ async function uploadFaceEmbeddingToCloud(nrp, embedding, deviceId) {
       device_id: activeDeviceId
     };
     
-    await fetch(GAS_URL, {
+    const response = await fetch(GAS_URL, {
       method: "POST",
-      mode: "no-cors", // Mode no-cors untuk bypass redirect Google
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(payload)
     });
-    console.log("Registrasi wajah & Device ID (" + activeDeviceId + ") untuk NRP " + nrp + " berhasil diunggah ke Google Sheets.");
+
+    let resData = null;
+    try {
+      resData = await response.json();
+    } catch (e) {
+      console.log("Membaca respon JSON dari GAS register_face:", e);
+    }
+
+    if (resData) {
+      return resData;
+    }
+    return { status: "success", message: "Registrasi wajah berhasil disimpan." };
   } catch (err) {
     console.error("Gagal mengunggah data wajah ke cloud:", err);
+    return { status: "error", message: "Gagal terhubung ke server cloud: " + err.toString() };
   }
 }
 
