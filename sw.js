@@ -1,10 +1,9 @@
-const CACHE_NAME = 'attendance-pwa-v19';
+const CACHE_NAME = 'attendance-pwa-v7';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './pwa_app.js',
   './qrcode.min.js',
-  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
   'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js',
   'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/tiny_face_detector_model-weights_manifest.json',
   'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/tiny_face_detector_model-shard1',
@@ -43,32 +42,19 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = event.request.url;
-
-  // Jangan intersepsi API request ke Google Apps Script / external API / non-GET
-  if (
-    event.request.method !== 'GET' ||
-    url.includes('script.google.com') ||
-    url.includes('script.googleusercontent.com')
-  ) {
-    return; // Serahkan langsung ke jaringan native browser
-  }
-
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
       return fetch(event.request).then((networkResponse) => {
-        if (networkResponse.status === 200 && url.startsWith('http')) {
+        if (event.request.method === 'GET' && networkResponse.status === 200) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache).catch(() => {});
+            cache.put(event.request, responseToCache);
           });
         }
         return networkResponse;
-      }).catch(err => {
-        console.warn('[Service Worker] Fetch failed:', err);
       });
     })
   );
