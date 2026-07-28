@@ -839,11 +839,10 @@ function stopRegistrationCamera() {
   const btnCapture = document.getElementById('btnCapturePhoto');
   if (btnCapture) {
     btnCapture.disabled = false;
+    btnCapture.classList.remove('btn-loading', 'btn-secondary');
     btnCapture.className = 'btn';
+    btnCapture.removeAttribute('style');
     btnCapture.innerHTML = 'Ambil Foto';
-    btnCapture.style.background = '';
-    btnCapture.style.pointerEvents = 'auto';
-    btnCapture.style.opacity = '1';
   }
   if (area) area.style.display = 'none';
   if (btn) btn.style.display = 'block';
@@ -852,17 +851,22 @@ function stopRegistrationCamera() {
 /**
  * Mengambil Sampel Embedding Wajah untuk NRP Karyawan
  */
-async function captureFaceEmbeddings() {
-  const btnCapture = document.getElementById('btnCapturePhoto');
+async function captureFaceEmbeddings(btnElement) {
+  const btnCapture = btnElement || document.getElementById('btnCapturePhoto');
 
   function setButtonState(loading) {
     if (btnCapture) {
       btnCapture.disabled = loading;
-      btnCapture.className = loading ? 'btn btn-secondary' : 'btn';
-      btnCapture.innerHTML = loading ? '⏳ Memproses...' : 'Ambil Foto';
-      btnCapture.style.background = loading ? 'transparent' : '';
-      btnCapture.style.pointerEvents = loading ? 'none' : 'auto';
-      btnCapture.style.opacity = loading ? '0.6' : '1';
+      if (loading) {
+        btnCapture.classList.add('btn-loading', 'btn-secondary');
+        btnCapture.setAttribute('style', 'background: transparent !important; background-color: transparent !important; color: rgba(255,255,255,0.4) !important; border: 1px solid rgba(255,255,255,0.2) !important; pointer-events: none !important; opacity: 0.6 !important;');
+        btnCapture.innerHTML = '⏳ Memproses...';
+      } else {
+        btnCapture.classList.remove('btn-loading', 'btn-secondary');
+        btnCapture.removeAttribute('style');
+        btnCapture.className = 'btn';
+        btnCapture.innerHTML = 'Ambil Foto';
+      }
     }
   }
 
@@ -870,8 +874,8 @@ async function captureFaceEmbeddings() {
   setButtonState(true);
 
   if (!isModelsLoaded) {
-    showRegResult("Model AI Wajah belum selesai diunduh. Mohon tunggu sejenak.", "error");
-    setButtonState(false);
+    showRegResult("Model AI Wajah belum selesai diunduh. Mohon tunggu sejenak...", "error");
+    setTimeout(() => setButtonState(false), 1500);
     return;
   }
 
@@ -881,13 +885,19 @@ async function captureFaceEmbeddings() {
 
   if (!nrp) {
     showRegResult("Harap masukkan NRP Anda sebelum mendaftar.", "error");
-    setButtonState(false);
+    setTimeout(() => setButtonState(false), 1500);
     return;
   }
 
+  // Jika video belum siap, tunggu hingga 600ms
   if (!regStream || video.paused || video.ended || video.readyState < 2) {
-    showRegResult("Kamera belum siap. Posisikan wajah Anda di dalam oval dan pastikan kamera depan aktif.", "error");
-    setButtonState(false);
+    console.warn("Menunggu video kamera siap...");
+    await new Promise(resolve => setTimeout(resolve, 600));
+  }
+
+  if (!regStream) {
+    showRegResult("Kamera belum aktif. Posisikan wajah Anda di dalam oval.", "error");
+    setTimeout(() => setButtonState(false), 1500);
     return;
   }
 
@@ -917,7 +927,7 @@ async function captureFaceEmbeddings() {
       if (resData && resData.status === "error") {
         console.warn("Registrasi ditolak server:", resData.message);
         showRegResult("❌ Ditolak Server: " + resData.message, "error");
-        setButtonState(false);
+        setTimeout(() => setButtonState(false), 2000);
         return;
       }
 
@@ -937,12 +947,12 @@ async function captureFaceEmbeddings() {
 
     } else {
       showRegResult("Wajah tidak terdeteksi. Posisikan wajah Anda tegak lurus dan pencahayaan terang di dalam oval panduan.", "error");
-      setButtonState(false);
+      setTimeout(() => setButtonState(false), 2000);
     }
   } catch (err) {
     console.error("Gagal memproses gambar dari kamera:", err);
     showRegResult("Gagal memproses gambar dari kamera: " + (err.message || err.toString()), "error");
-    setButtonState(false);
+    setTimeout(() => setButtonState(false), 2000);
   }
 }
 
