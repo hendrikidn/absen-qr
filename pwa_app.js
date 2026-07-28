@@ -431,17 +431,7 @@ function onQRScanFailure(error) {
   // Silent failure (terus memindai)
 }
 
-function cancelScan() {
-  stopScanCamera();
-  resetToScanStep1();
-  startQRScanner();
-}
-
-/**
- * Memulai ulang scanner QR Code pada Langkah 1 (Bersihkan data QR lama & baca ulang QR baru)
- */
-async function restartQRScanner() {
-  // Bersihkan parameter URL lama dari browser agar tidak terbaca ulang
+async function cancelScan() {
   try {
     if (window.location.search) {
       window.history.replaceState({}, '', window.location.pathname);
@@ -450,11 +440,28 @@ async function restartQRScanner() {
 
   const resultDiv = document.getElementById('scanResult');
   if (resultDiv) resultDiv.style.display = 'none';
-  showScanResult("⏳ Memulai ulang kamera QR Code scanner...", "success");
+
+  await stopAllCameras();
+  resetToScanStep1();
   await startQRScanner();
-  setTimeout(() => {
-    if (resultDiv) resultDiv.style.display = 'none';
-  }, 1500);
+}
+
+/**
+ * Memulai ulang scanner QR Code pada Langkah 1 (Bersihkan data QR lama & baca ulang QR baru)
+ */
+async function restartQRScanner() {
+  try {
+    if (window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch(e){}
+
+  const resultDiv = document.getElementById('scanResult');
+  if (resultDiv) resultDiv.style.display = 'none';
+
+  await stopAllCameras();
+  resetToScanStep1();
+  await startQRScanner();
 }
 
 let baselineSmileRatio = null;
