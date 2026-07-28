@@ -1534,7 +1534,7 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "")
           startQRScanner();
         }, 4000);
       },
-      { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
     );
   } else {
     showScanResult("❌ Fitur Geolocation/GPS tidak didukung pada browser ini.", "error");
@@ -1600,8 +1600,8 @@ async function sendToGAS(payload) {
 
     saveLocalAttendanceStatus(payload.nrp, payload.attendance_type);
 
-    if (challengeText) challengeText.innerText = "✅ Absensi Berhasil! Menutup halaman dalam 3 detik...";
-    const successMsg = resData && resData.message ? resData.message : ("Absensi sukses dikirim! Terima kasih, " + payload.nrp + ".");
+    const successMsg = resData && resData.message ? resData.message : ("Absensi sukses dikirim! Terima kasih.");
+    if (challengeText) challengeText.innerText = "✅ " + successMsg;
     showScanResult("✅ " + successMsg, "success");
 
     // Berikan jeda 3 detik untuk memberikan konfirmasi ke pengguna, lalu tutup tab browser
@@ -2005,41 +2005,31 @@ async function syncFaceProfile(btnElement) {
     const deviceId = getOrCreateDeviceId();
     let data = null;
 
-    // 1. Coba GET dengan action=get_face_embedding & device_id
+    // 1. Coba GET tercepat dengan timeout 6 detik
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
       const url = `${GAS_URL}?action=get_face_embedding&nrp=${encodeURIComponent(nrp)}&device_id=${encodeURIComponent(deviceId)}`;
-      const response = await fetch(url, { redirect: "follow" });
+      const response = await fetch(url, { signal: controller.signal, redirect: "follow" });
+      clearTimeout(timeoutId);
       const text = await response.text();
       data = JSON.parse(text);
-    } catch (e) { }
+    } catch (e) { console.warn("Sync GET 1 warning:", e); }
 
-    // 2. Jika gagal, coba GET tanpa device_id (kasus clear cache / device_id baru)
+    // 2. Jika gagal atau format lama, coba GET tanpa device_id
     if (!data || (data.status !== "success" && data.status !== "ok")) {
       try {
+        const controller2 = new AbortController();
+        const timeoutId2 = setTimeout(() => controller2.abort(), 6000);
         const urlNoDevice = `${GAS_URL}?action=get_face_embedding&nrp=${encodeURIComponent(nrp)}`;
-        const resp2 = await fetch(urlNoDevice, { redirect: "follow" });
+        const resp2 = await fetch(urlNoDevice, { signal: controller2.signal, redirect: "follow" });
+        clearTimeout(timeoutId2);
         const text2 = await resp2.text();
         const data2 = JSON.parse(text2);
         if (data2 && (data2.status === "success" || data2.status === "ok")) {
           data = data2;
         }
-      } catch (e) { }
-    }
-
-    // 3. Fallback ketiga: coba POST request
-    if (!data || (data.status !== "success" && data.status !== "ok")) {
-      try {
-        const postResp = await fetch(GAS_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "get_face_embedding", nrp: nrp, device_id: deviceId })
-        });
-        const postText = await postResp.text();
-        const postData = JSON.parse(postText);
-        if (postData && (postData.status === "success" || postData.status === "ok")) {
-          data = postData;
-        }
-      } catch (e) { }
+      } catch (e) { console.warn("Sync GET 2 warning:", e); }
     }
 
     if (data && (data.status === "success" || data.status === "ok")) {
@@ -2060,13 +2050,6 @@ async function syncFaceProfile(btnElement) {
         console.log('[DBG] Device ID resmi disinkronkan dari server:', serverDeviceId);
       } else {
         localStorage.setItem('attendance_registered_device_id', deviceId);
-        try {
-          fetch(GAS_URL, {
-            method: "POST",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ action: "update_device_id", nrp: nrp, device_id: deviceId })
-          }).catch(() => { });
-        } catch (e) { }
       }
 
       showSyncResult("✅ Perangkat berhasil disinkronkan! Profil NRP " + nrp + " terverifikasi.", "success");
@@ -2074,13 +2057,12 @@ async function syncFaceProfile(btnElement) {
       setTimeout(() => {
         setSyncBtnState(false);
         closeSyncOverlay();
-        // LANGKAH 2: Tetap di Layar Scan Absen (viewScan), TIDAK MASUK KE TAB REGISTRASI
         if (scannedQRData) {
           startLivenessCamera();
         } else {
           startQRScanner();
         }
-      }, 1800);
+      }, 1000);
     } else {
       const serverMsg = (data && data.message) ? data.message : ("NRP (" + nrp + ") belum terdaftar di database cloud.");
       showSyncResult("❌ " + serverMsg + "<br><br><span style='font-size:0.8rem; color:#cbd5e1;'>Pastikan NRP sudah pernah didaftarkan.</span>", "error");
