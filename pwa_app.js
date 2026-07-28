@@ -1501,7 +1501,7 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "")
       attendance_type: attendanceType,
       working_hour: selectedWorkingHour || "",
       device_id: getOrCreateDeviceId(),
-      notes: "Absen " + typeLabel + (selectedWorkingHour ? (" (" + selectedWorkingHour + ")") : "") + " via PWA (Akurasi GPS: " + Math.round(accuracy || 0) + "m)"
+      notes: "Absen " + typeLabel + (selectedWorkingHour ? (" (" + selectedWorkingHour + ")") : "") + " via PWA"
     };
 
     if (navigator.onLine) {
