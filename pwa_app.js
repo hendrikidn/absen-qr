@@ -319,8 +319,14 @@ async function onQRScanSuccess(decodedText, decodedResult) {
         timestamp: Number(timestamp),
         totp_token: totpToken
       };
+
+      // Redirect / update URL browser ke link QR Code yang baru di-scan
+      try {
+        window.history.replaceState({}, '', decodedText);
+      } catch(e){}
+
     } else {
-      // Fallback format lama (JSON)
+      // Fallback format JSON
       scannedQRData = JSON.parse(decodedText);
       const outletVal = scannedQRData.outlet || scannedQRData.outlet_id;
       
@@ -330,7 +336,7 @@ async function onQRScanSuccess(decodedText, decodedResult) {
       scannedQRData.outlet = outletVal;
     }
 
-    console.log("QR Code valid terbaca:", scannedQRData);
+    console.log("QR Code baru berhasil diproses:", scannedQRData);
 
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP) {
@@ -346,8 +352,7 @@ async function onQRScanSuccess(decodedText, decodedResult) {
       return;
     }
 
-    // 3. Pindah langsung ke Langkah 2: Deteksi Wajah & Liveness
-    // Menggunakan setTimeout pendek agar callback onQRScanSuccess selesai tanpa mengunci thread scanner
+    // 3. Pindah langsung ke Langkah 2: Deteksi Wajah & Liveness dengan QR Code baru
     setTimeout(() => {
       startLivenessCamera();
     }, 50);
@@ -369,9 +374,16 @@ function cancelScan() {
 }
 
 /**
- * Memulai ulang scanner QR Code pada Langkah 1
+ * Memulai ulang scanner QR Code pada Langkah 1 (Bersihkan data QR lama & baca ulang QR baru)
  */
 async function restartQRScanner() {
+  // Bersihkan parameter URL lama dari browser agar tidak terbaca ulang
+  try {
+    if (window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  } catch(e){}
+
   const resultDiv = document.getElementById('scanResult');
   if (resultDiv) resultDiv.style.display = 'none';
   showScanResult("⏳ Memulai ulang kamera QR Code scanner...", "success");
@@ -824,6 +836,11 @@ function stopRegistrationCamera() {
   }
   const area = document.getElementById('registerCameraArea');
   const btn = document.getElementById('btnStartReg');
+  const btnCapture = document.getElementById('btnCapturePhoto');
+  if (btnCapture) {
+    btnCapture.disabled = false;
+    btnCapture.innerHTML = 'Ambil Foto';
+  }
   if (area) area.style.display = 'none';
   if (btn) btn.style.display = 'block';
 }
@@ -832,6 +849,15 @@ function stopRegistrationCamera() {
  * Mengambil Sampel Embedding Wajah untuk NRP Karyawan
  */
 async function captureFaceEmbeddings() {
+  const btnCapture = document.getElementById('btnCapturePhoto');
+
+  function setButtonState(loading) {
+    if (btnCapture) {
+      btnCapture.disabled = loading;
+      btnCapture.innerHTML = loading ? '⏳ Memproses...' : 'Ambil Foto';
+    }
+  }
+
   if (!isModelsLoaded) {
     showRegResult("Model AI Wajah belum selesai diunduh. Mohon tunggu sejenak.", "error");
     return;
@@ -850,6 +876,9 @@ async function captureFaceEmbeddings() {
     showRegResult("Kamera belum siap. Posisikan wajah Anda di dalam oval dan pastikan kamera depan aktif.", "error");
     return;
   }
+
+  // Nonaktifkan tombol saat analisis & registrasi berjalan
+  setButtonState(true);
 
   showRegResult("⏳ Memproses & memverifikasi registrasi di server cloud...", "success");
 
@@ -877,6 +906,7 @@ async function captureFaceEmbeddings() {
       if (resData && resData.status === "error") {
         console.warn("Registrasi ditolak server:", resData.message);
         showRegResult("❌ Ditolak Server: " + resData.message, "error");
+        setButtonState(false);
         return;
       }
 
@@ -889,16 +919,19 @@ async function captureFaceEmbeddings() {
       showRegResult("✅ " + serverMessage, "success");
 
       setTimeout(() => {
+        setButtonState(false);
         stopRegistrationCamera();
         switchView('scan');
       }, 3500);
 
     } else {
       showRegResult("Wajah tidak terdeteksi. Posisikan wajah Anda tegak lurus dan pencahayaan terang di dalam oval panduan.", "error");
+      setButtonState(false);
     }
   } catch (err) {
     console.error("Gagal memproses gambar dari kamera:", err);
     showRegResult("Gagal memproses gambar dari kamera: " + (err.message || err.toString()), "error");
+    setButtonState(false);
   }
 }
 
