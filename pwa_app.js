@@ -841,6 +841,7 @@ function stopRegistrationCamera() {
     btnCapture.disabled = false;
     btnCapture.className = 'btn';
     btnCapture.innerHTML = 'Ambil Foto';
+    btnCapture.style.background = '';
     btnCapture.style.pointerEvents = 'auto';
     btnCapture.style.opacity = '1';
   }
@@ -859,8 +860,9 @@ async function captureFaceEmbeddings() {
       btnCapture.disabled = loading;
       btnCapture.className = loading ? 'btn btn-secondary' : 'btn';
       btnCapture.innerHTML = loading ? '⏳ Memproses...' : 'Ambil Foto';
+      btnCapture.style.background = loading ? 'transparent' : '';
       btnCapture.style.pointerEvents = loading ? 'none' : 'auto';
-      btnCapture.style.opacity = loading ? '0.5' : '1';
+      btnCapture.style.opacity = loading ? '0.6' : '1';
     }
   }
 
