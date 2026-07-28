@@ -73,6 +73,25 @@ function getAttendanceTypeLabel(type) {
   return map[type] || 'Masuk';
 }
 
+/**
+ * Memperbarui visibilitas Pilihan Jenis Absensi (Hanya tampil jika HP sudah terdaftar / tersinkronkan)
+ */
+function updateAttendanceTypeVisibility() {
+  const typeContainer = document.querySelector('.attendance-type-container');
+  const registeredNRP = localStorage.getItem('attendance_registered_nrp');
+  const registeredEmbeddings = localStorage.getItem('attendance_registered_embeddings');
+
+  if (typeContainer) {
+    if (registeredNRP && registeredEmbeddings) {
+      typeContainer.style.display = 'block';
+    } else {
+      typeContainer.style.display = 'none';
+    }
+  }
+}
+
+window.updateAttendanceTypeVisibility = updateAttendanceTypeVisibility;
+
 // =========================================================================
 // DEBUG HELPERS
 // =========================================================================
@@ -388,6 +407,7 @@ async function switchView(viewName) {
 
     // Reset UI ke Langkah 1
     resetToScanStep1UI();
+    updateAttendanceTypeVisibility();
 
     // Tampilkan view scan — cukup tambahkan 'active' saja karena 'view-screen' sudah ada di HTML
     // JANGAN classList.add('view-screen active') karena spasi di dalam string menyebabkan DOMException!
@@ -1228,11 +1248,11 @@ async function runLivenessLoop(video) {
 
       if (isSmileDetected) {
         livenessPassed = true;
-        challengeText.innerText = "Senyuman Terdeteksi! 😊 Mengirim sampel ke server...";
+        challengeText.innerText = "Senyuman Terdeteksi! 😊 Mengalihkan ke Langkah 3...";
         stopScanCamera();
 
-        // Kirim absen beserta live descriptor ke server cloud
-        submitAttendance(latestLiveDescriptor);
+        // Pindah ke Langkah 3: Pilih Jenis Absensi & Kirim
+        goToScanStep3();
         return;
       }
     }
@@ -1285,6 +1305,45 @@ function checkSmileLiveness(landmarks) {
 
   // Senyum hanya dianggap VALID jika terjadi perubahan ekspresi senyum nyata dari wajah netral
   return isWidthStretched || (cornerLift > 0.20 && currentSmileRatio >= baselineSmileRatio * 1.08);
+}
+
+/**
+ * Membuka Langkah 3: Pilih Jenis Absensi & Konfirmasi Kirim
+ */
+function goToScanStep3() {
+  stopAllCameras();
+
+  const step1 = document.getElementById('scanStep1');
+  const step2 = document.getElementById('scanStep2');
+  const step3 = document.getElementById('scanStep3');
+
+  if (step1) step1.style.display = 'none';
+  if (step2) step2.style.display = 'none';
+  if (step3) step3.style.display = 'block';
+
+  // State tombol jenis absensi
+  if (window.updateAttendanceTypeVisibility) {
+    window.updateAttendanceTypeVisibility();
+  }
+
+  // Reset state tombol submit
+  const btnSubmit = document.getElementById('btnSubmitAttendance');
+  if (btnSubmit) {
+    btnSubmit.disabled = false;
+    btnSubmit.innerHTML = '📤 Kirim Absensi Sekarang';
+  }
+}
+
+/**
+ * Konfirmasi pengiriman absensi dari Langkah 3
+ */
+function confirmAndSubmitAttendance() {
+  const btnSubmit = document.getElementById('btnSubmitAttendance');
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerHTML = '⏳ Mengirim Absensi...';
+  }
+  submitAttendance(latestLiveDescriptor);
 }
 
 /**
@@ -1888,6 +1947,7 @@ async function syncFaceProfile(btnElement) {
       }
 
       showSyncResult("✅ Perangkat berhasil disinkronkan! Profil NRP " + nrp + " terverifikasi.", "success");
+      updateAttendanceTypeVisibility();
 
       setTimeout(() => {
         setSyncBtnState(false);
@@ -1956,4 +2016,11 @@ function showSyncResult(message, type) {
     resultDiv.className = "feedback-message " + (type === 'success' ? 'feedback-success' : 'feedback-error');
     resultDiv.style.display = 'block';
   }
+}
+
+// Inisialisasi visibilitas tombol jenis absensi saat aplikasi dibuka
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', updateAttendanceTypeVisibility);
+} else {
+  updateAttendanceTypeVisibility();
 }
