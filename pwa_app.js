@@ -69,6 +69,13 @@ function checkURLParameters() {
     };
     console.log("Parameter URL terdeteksi dari kamera bawaan HP:", scannedQRData);
     
+    // Bersihkan parameter URL dari address bar agar tidak terjebak di QR lama saat reload/rescan
+    try {
+      if (window.location.search) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch(e){}
+    
     // Pastikan user terdaftar di ponsel ini
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP) {
@@ -383,12 +390,12 @@ async function onQRScanSuccess(decodedText, decodedResult) {
 
     console.log("QR Code baru berhasil diproses:", scannedQRData);
 
-    // Perbarui URL browser jika berupa tautan HTTP/HTTPS
-    if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
-      try {
-        window.history.replaceState({}, '', decodedText);
-      } catch(e){}
-    }
+    // Bersihkan parameter URL dari address bar agar tidak menumpuk parameter lama
+    try {
+      if (window.location.search) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch(e){}
 
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP) {
