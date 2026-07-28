@@ -192,6 +192,14 @@ async function switchView(viewName) {
   await stopAllCameras();
 
   if (viewName === 'scan') {
+    // Reset seluruh state scan saat kembali ke tab scan
+    scannedQRData = null;
+    isProcessingQRScan = false;
+    livenessPassed = false;
+    faceVerified = false;
+    baselineSmileRatio = null;
+    latestLiveDescriptor = null;
+
     document.getElementById('viewScan').classList.add('active');
     startQRScanner();
   } else {
@@ -283,8 +291,11 @@ async function stopAllCameras() {
 async function startQRScanner() {
   try { await stopAllCameras(); } catch (e) { }
 
+  // Reset processing lock agar scan baru tidak diblokir
+  isProcessingQRScan = false;
+
   // Tampilkan Step 1, Sembunyikan Step 2
-  resetToScanStep1();
+  resetToScanStep1UI();
 
   const config = {
     fps: 15,
@@ -489,14 +500,34 @@ async function restartQRScanner() {
 
 let baselineSmileRatio = null;
 
-function resetToScanStep1() {
+/**
+ * Reset tampilan UI saja ke Langkah 1, tanpa menghapus scannedQRData.
+ * Digunakan oleh startQRScanner() agar data QR yang sudah di-scan tidak hilang
+ * jika kamera restart karena alasan lain.
+ */
+function resetToScanStep1UI() {
   document.getElementById('scanStep1').style.display = 'block';
   document.getElementById('scanStep2').style.display = 'none';
   document.getElementById('scanResult').style.display = 'none';
-  scannedQRData = null;
   livenessPassed = false;
   faceVerified = false;
   baselineSmileRatio = null;
+}
+
+/**
+ * Reset tampilan UI ke Langkah 1 BESERTA data QR (full reset).
+ * Digunakan saat user membatalkan scan atau terjadi error yang memerlukan scan ulang dari awal.
+ */
+function resetToScanStep1() {
+  scannedQRData = null;
+  isProcessingQRScan = false;
+  livenessPassed = false;
+  faceVerified = false;
+  baselineSmileRatio = null;
+  latestLiveDescriptor = null;
+  document.getElementById('scanStep1').style.display = 'block';
+  document.getElementById('scanStep2').style.display = 'none';
+  document.getElementById('scanResult').style.display = 'none';
 }
 
 /**
