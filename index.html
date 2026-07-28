@@ -677,48 +677,46 @@
         <p
           style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top:-10px; margin-bottom: 14px;">
           Posisikan QR Code di dalam kotak scanner
-        </p>
       </div>
-    </div>
 
-    <div id="scanStep2" style="display: none; position: relative;">
-      <label>Langkah 2: Verifikasi Wajah & Keaktifan (Tersenyum 😊)</label>
-      <div class="camera-viewport">
-        <video id="scanFaceVideo" autoplay muted playsinline></video>
-        <div class="face-overlay">
-          <div id="faceGuide" class="face-guide-oval"></div>
+      <div id="scanStep2" style="display: none; position: relative;">
+        <label>Langkah 2: Verifikasi Wajah & Keaktifan (Tersenyum 😊)</label>
+        <div class="camera-viewport">
+          <video id="scanFaceVideo" autoplay muted playsinline></video>
+          <div class="face-overlay">
+            <div id="faceGuide" class="face-guide-oval"></div>
+          </div>
+          <!-- Challenge notification -->
+          <div id="challengeText" class="challenge-prompt">Memuat pendeteksi...</div>
         </div>
-        <!-- Challenge notification -->
-        <div id="challengeText" class="challenge-prompt">Memuat pendeteksi...</div>
+        <button id="btnCancelScan" class="btn btn-secondary" onclick="cancelScan()">Batal</button>
       </div>
-      <button id="btnCancelScan" class="btn btn-secondary" onclick="cancelScan()">Batal</button>
-    </div>
 
-    <div id="scanStep3" style="display: none; position: relative;">
-      <label>Langkah 3: Pilih Menu Absensi</label>
-      <div class="menu-grid-2x2">
-        <button type="button" class="menu-card clock-in" onclick="handleClockInClick()">
-          <div class="menu-icon">🟢</div>
-          <div class="menu-title">Masuk Kerja</div>
-        </button>
-        <button type="button" class="menu-card start-break" onclick="submitAttendance('START_BREAK')">
-          <div class="menu-icon">☕</div>
-          <div class="menu-title">Mulai Istirahat</div>
-        </button>
-        <button type="button" class="menu-card stop-break" onclick="submitAttendance('STOP_BREAK')">
-          <div class="menu-icon">🔄</div>
-          <div class="menu-title">Selesai Istirahat</div>
-        </button>
-        <button type="button" class="menu-card clock-out" onclick="submitAttendance('CLOCK_OUT')">
-          <div class="menu-icon">🔴</div>
-          <div class="menu-title">Pulang Kerja</div>
-        </button>
+      <div id="scanStep3" style="display: none; position: relative;">
+        <label>Langkah 3: Pilih Menu Absensi</label>
+        <div class="menu-grid-2x2">
+          <button type="button" class="menu-card clock-in" onclick="handleClockInClick()">
+            <div class="menu-icon">🟢</div>
+            <div class="menu-title">Masuk Kerja</div>
+          </button>
+          <button type="button" class="menu-card start-break" onclick="submitAttendance('START_BREAK')">
+            <div class="menu-icon">☕</div>
+            <div class="menu-title">Mulai Istirahat</div>
+          </button>
+          <button type="button" class="menu-card stop-break" onclick="submitAttendance('STOP_BREAK')">
+            <div class="menu-icon">🔄</div>
+            <div class="menu-title">Selesai Istirahat</div>
+          </button>
+          <button type="button" class="menu-card clock-out" onclick="submitAttendance('CLOCK_OUT')">
+            <div class="menu-icon">🔴</div>
+            <div class="menu-title">Pulang Kerja</div>
+          </button>
+        </div>
+        <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()">Batal Scan</button>
       </div>
-      <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()">Batal Scan</button>
-    </div>
 
-    <div id="scanResult" class="feedback-message"></div>
-  </div>
+      <div id="scanResult" class="feedback-message"></div>
+    </div>
 
   <!-- VIEW 2: REGISTRASI WAJAH KARYAWAN -->
   <div id="viewRegister" class="view-screen">
@@ -790,7 +788,7 @@
     </div>
   </div>
 
-  <script src="pwa_app.js?v=4.9" type="text/javascript"></script>
+  <script src="pwa_app.js?v=5.0" type="text/javascript"></script>
 </body>
 
 </html>
