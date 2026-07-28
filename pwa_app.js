@@ -841,6 +841,8 @@ function stopRegistrationCamera() {
     btnCapture.disabled = false;
     btnCapture.className = 'btn';
     btnCapture.innerHTML = 'Ambil Foto';
+    btnCapture.style.pointerEvents = 'auto';
+    btnCapture.style.opacity = '1';
   }
   if (area) area.style.display = 'none';
   if (btn) btn.style.display = 'block';
@@ -857,11 +859,17 @@ async function captureFaceEmbeddings() {
       btnCapture.disabled = loading;
       btnCapture.className = loading ? 'btn btn-secondary' : 'btn';
       btnCapture.innerHTML = loading ? '⏳ Memproses...' : 'Ambil Foto';
+      btnCapture.style.pointerEvents = loading ? 'none' : 'auto';
+      btnCapture.style.opacity = loading ? '0.5' : '1';
     }
   }
 
+  // Langsung nonaktifkan tombol begitu diklik
+  setButtonState(true);
+
   if (!isModelsLoaded) {
     showRegResult("Model AI Wajah belum selesai diunduh. Mohon tunggu sejenak.", "error");
+    setButtonState(false);
     return;
   }
 
@@ -871,16 +879,15 @@ async function captureFaceEmbeddings() {
 
   if (!nrp) {
     showRegResult("Harap masukkan NRP Anda sebelum mendaftar.", "error");
+    setButtonState(false);
     return;
   }
 
   if (!regStream || video.paused || video.ended || video.readyState < 2) {
     showRegResult("Kamera belum siap. Posisikan wajah Anda di dalam oval dan pastikan kamera depan aktif.", "error");
+    setButtonState(false);
     return;
   }
-
-  // Nonaktifkan tombol saat analisis & registrasi berjalan
-  setButtonState(true);
 
   showRegResult("⏳ Memproses & memverifikasi registrasi di server cloud...", "success");
 
