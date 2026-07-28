@@ -476,19 +476,15 @@ async function startQRScanner() {
   // Reset UI ke Langkah 1
   resetToScanStep1UI();
 
-  // Pastikan elemen #reader benar-benar kosong sebelum buat instance baru
+  // Bersihkan #reader — cukup innerHTML saja, stopAllCameras sudah melakukan clone/replace
+  // Jangan clone/replace lagi di sini karena elemen yang baru di-clone belum tentu ter-render
+  // dan dimensinya bisa 0, menyebabkan qrbox = 0x0 (scanner tidak scan apapun)
   try {
     const readerEl = document.getElementById('reader');
     if (readerEl) {
       console.log('[DBG] startQRScanner: #reader children sebelum clear:', readerEl.children.length);
-      // Hapus semua child dan event listener
       readerEl.innerHTML = '';
-      // Clone dan replace untuk menghapus semua event listener
-      const newReader = readerEl.cloneNode(false);
-      readerEl.parentNode.replaceChild(newReader, readerEl);
-      // Re-assign id
-      newReader.id = 'reader';
-      console.log('[DBG] startQRScanner: #reader berhasil dikosongkan');
+      console.log('[DBG] startQRScanner: #reader di-clear (tanpa clone)');
     } else {
       console.error('[DBG] startQRScanner: element #reader TIDAK DITEMUKAN di DOM!');
     }
@@ -496,14 +492,26 @@ async function startQRScanner() {
     console.warn("Cleanup reader element error:", e);
   }
 
+  // Beri waktu browser render elemen yang baru dikosongkan sebelum Html5Qrcode mulai
+  await new Promise(r => setTimeout(r, 100));
+
+  // Konfigurasi scanner — gunakan fixed fallback jika dimensi belum tersedia (elemen baru render)
   const config = {
-    fps: 15,
+    fps: 10,
     qrbox: (viewfinderWidth, viewfinderHeight) => {
-      const minDim = Math.min(viewfinderWidth, viewfinderHeight);
-      return {
-        width: Math.floor(minDim * 0.8),
-        height: Math.floor(minDim * 0.8)
-      };
+      const w = viewfinderWidth || 0;
+      const h = viewfinderHeight || 0;
+      const minDim = Math.min(w, h);
+      // PENTING: jika dimensi = 0 (elemen belum ter-render), gunakan ukuran fixed aman
+      if (minDim < 10) {
+        console.warn('[DBG] qrbox: dimensi tidak valid (' + w + 'x' + h + '), pakai fallback 250px');
+        dbgLog('⚠️ qrbox fallback 250px (viewfinder=' + w + 'x' + h + ')');
+        return { width: 250, height: 250 };
+      }
+      const size = Math.floor(minDim * 0.8);
+      console.log('[DBG] qrbox: ' + size + 'x' + size + ' (viewfinder=' + w + 'x' + h + ')');
+      dbgLog('📏 qrbox: ' + size + 'x' + size + ' (viewfinder=' + w + 'x' + h + ')');
+      return { width: size, height: size };
     }
   };
 
@@ -694,8 +702,24 @@ async function onQRScanSuccess(decodedText, decodedResult) {
   }
 }
 
+let _scanFailCount = 0;
+let _scanFailTimer = null;
 function onQRScanFailure(error) {
-  // Silent failure (terus memindai)
+  // Hitung scan attempt dan tampilkan di debug panel setiap 2 detik
+  _scanFailCount++;
+  if (!_scanFailTimer) {
+    _scanFailTimer = setTimeout(() => {
+      dbgLog('🔄 Scan attempts: ' + _scanFailCount + ' (dalam 2 detik terakhir)');
+      const dbgScannerEl = document.getElementById('dbgScannerState');
+      if (dbgScannerEl) {
+        const stateText = html5QrcodeScanner ?
+          (html5QrcodeScanner.getState ? 'state=' + html5QrcodeScanner.getState() : 'ada') : 'null';
+        dbgScannerEl.innerText = '📷 scanner: ' + stateText + ' | scan attempts: ' + _scanFailCount;
+      }
+      _scanFailCount = 0;
+      _scanFailTimer = null;
+    }, 2000);
+  }
 }
 
 async function cancelScan() {
