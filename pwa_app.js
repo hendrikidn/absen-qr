@@ -1729,17 +1729,41 @@ async function uploadFaceEmbeddingToCloud(nrp, embedding, deviceId) {
 /**
  * Menyinkronkan Profil Wajah Karyawan dari Cloud jika PWA dibuka di browser baru / setelah clear cache
  */
-async function syncFaceProfile() {
+async function syncFaceProfile(btnElement) {
+  const btnSync = btnElement || document.getElementById('btnSyncProfile');
+
+  function setSyncBtnState(loading) {
+    if (btnSync) {
+      btnSync.disabled = loading;
+      if (loading) {
+        btnSync.style.display = 'none';
+      } else {
+        btnSync.disabled = false;
+        btnSync.classList.remove('btn-secondary');
+        btnSync.removeAttribute('style');
+        btnSync.className = 'btn';
+        btnSync.style.display = 'block';
+        btnSync.style.marginBottom = '12px';
+        btnSync.innerHTML = 'Sinkronkan Perangkat';
+      }
+    }
+  }
+
+  // Langsung sembunyikan & nonaktifkan tombol begitu diklik (karakteristik persis Ambil Foto)
+  setSyncBtnState(true);
+
   const syncNrpInput = document.getElementById('syncNRP');
   const nrp = syncNrpInput ? syncNrpInput.value.trim() : '';
 
   if (!nrp) {
     showSyncResult("Harap masukkan NRP Anda.", "error");
+    setTimeout(() => setSyncBtnState(false), 1500);
     return;
   }
 
   if (!navigator.onLine) {
     showSyncResult("Koneksi offline. Tidak dapat menyinkronkan profil wajah dari cloud.", "error");
+    setTimeout(() => setSyncBtnState(false), 1500);
     return;
   }
 
@@ -1804,7 +1828,6 @@ async function syncFaceProfile() {
         console.log('[DBG] Device ID resmi disinkronkan dari server:', serverDeviceId);
       } else {
         localStorage.setItem('attendance_registered_device_id', deviceId);
-        // Kirim pembaruan device_id ke GAS jika didukung
         try {
           fetch(GAS_URL, {
             method: "POST",
@@ -1817,7 +1840,9 @@ async function syncFaceProfile() {
       showSyncResult("✅ Perangkat berhasil disinkronkan! Profil NRP " + nrp + " terverifikasi.", "success");
 
       setTimeout(() => {
+        setSyncBtnState(false);
         closeSyncOverlay();
+        // LANGKAH 2: Tetap di Layar Scan Absen (viewScan), TIDAK MASUK KE TAB REGISTRASI
         if (scannedQRData) {
           startLivenessCamera();
         } else {
@@ -1826,11 +1851,13 @@ async function syncFaceProfile() {
       }, 1800);
     } else {
       const serverMsg = (data && data.message) ? data.message : ("NRP (" + nrp + ") belum terdaftar di database cloud.");
-      showSyncResult("❌ " + serverMsg + "<br><br><span style='font-size:0.8rem; color:#cbd5e1;'>Jika Anda belum mendaftar / baru menghapus cache, silakan klik <strong>Registrasi Baru</strong> di bawah.</span>", "error");
+      showSyncResult("❌ " + serverMsg + "<br><br><span style='font-size:0.8rem; color:#cbd5e1;'>Pastikan NRP sudah pernah didaftarkan.</span>", "error");
+      setTimeout(() => setSyncBtnState(false), 2000);
     }
   } catch (err) {
     console.error("Gagal sinkronisasi wajah:", err);
     showSyncResult("❌ Gagal terhubung ke server cloud: " + (err.message || err.toString()), "error");
+    setTimeout(() => setSyncBtnState(false), 2000);
   }
 }
 
@@ -1838,9 +1865,20 @@ function closeSyncOverlay() {
   const overlay = document.getElementById('syncNrpOverlay');
   const result = document.getElementById('syncResult');
   const input = document.getElementById('syncNRP');
+  const btnSync = document.getElementById('btnSyncProfile');
+
   if (overlay) overlay.style.display = 'none';
   if (result) result.style.display = 'none';
   if (input) input.value = '';
+
+  if (btnSync) {
+    btnSync.disabled = false;
+    btnSync.removeAttribute('style');
+    btnSync.className = 'btn';
+    btnSync.style.display = 'block';
+    btnSync.style.marginBottom = '12px';
+    btnSync.innerHTML = 'Sinkronkan Perangkat';
+  }
 }
 
 function goToRegistrationFromOverlay() {

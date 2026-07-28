@@ -583,55 +583,55 @@
           Posisikan QR Code di dalam kotak scanner
         </p>
       </div>
-      </div>
-
-      <div id="scanStep2" style="display: none; position: relative;">
-        <label>Langkah 2: Verifikasi Wajah & Keaktifan (Tersenyum 😊)</label>
-        <div class="camera-viewport">
-          <video id="scanFaceVideo" autoplay muted playsinline></video>
-          <div class="face-overlay">
-            <div id="faceGuide" class="face-guide-oval"></div>
-          </div>
-          <!-- Challenge notification -->
-          <div id="challengeText" class="challenge-prompt">Memuat pendeteksi...</div>
-        </div>
-        <button id="btnCancelScan" class="btn btn-secondary" onclick="cancelScan()">Batal Scan</button>
-      </div>
-
-      <div id="scanResult" class="feedback-message"></div>
     </div>
 
-    <!-- VIEW 2: REGISTRASI WAJAH KARYAWAN -->
-    <div id="viewRegister" class="view-screen">
-      <div class="form-group">
-        <label for="regNRP">Nomor Registrasi Pegawai (NRP)</label>
-        <input type="text" id="regNRP" placeholder="Masukkan NRP Anda">
+    <div id="scanStep2" style="display: none; position: relative;">
+      <label>Langkah 2: Verifikasi Wajah & Keaktifan (Tersenyum 😊)</label>
+      <div class="camera-viewport">
+        <video id="scanFaceVideo" autoplay muted playsinline></video>
+        <div class="face-overlay">
+          <div id="faceGuide" class="face-guide-oval"></div>
+        </div>
+        <!-- Challenge notification -->
+        <div id="challengeText" class="challenge-prompt">Memuat pendeteksi...</div>
       </div>
-
-      <div id="registerCameraArea" style="display:none;">
-        <label>Pendaftaran Sampel Wajah (Kamera Depan)</label>
-        <div class="camera-viewport">
-          <video id="regFaceVideo" autoplay muted playsinline></video>
-          <div class="face-overlay">
-            <div class="face-guide-oval"></div>
-          </div>
-        </div>
-
-        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-          <button id="btnCapturePhoto" class="btn"
-            onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
-          <button class="btn btn-secondary" style="flex:0.5;" onclick="stopRegistrationCamera()">Batal</button>
-        </div>
-
-        <div id="regProgress"
-          style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
-          Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.
-        </div>
-      </div>
-
-      <button id="btnStartReg" class="btn" onclick="startRegistrationFlow()">Mulai Registrasi</button>
-      <div id="regResult" class="feedback-message"></div>
+      <button id="btnCancelScan" class="btn btn-secondary" onclick="cancelScan()">Batal Scan</button>
     </div>
+
+    <div id="scanResult" class="feedback-message"></div>
+  </div>
+
+  <!-- VIEW 2: REGISTRASI WAJAH KARYAWAN -->
+  <div id="viewRegister" class="view-screen">
+    <div class="form-group">
+      <label for="regNRP">Nomor Registrasi Pegawai (NRP)</label>
+      <input type="text" id="regNRP" placeholder="Masukkan NRP Anda">
+    </div>
+
+    <div id="registerCameraArea" style="display:none;">
+      <label>Pendaftaran Sampel Wajah (Kamera Depan)</label>
+      <div class="camera-viewport">
+        <video id="regFaceVideo" autoplay muted playsinline></video>
+        <div class="face-overlay">
+          <div class="face-guide-oval"></div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+        <button id="btnCapturePhoto" class="btn"
+          onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
+        <button class="btn btn-secondary" style="flex:0.5;" onclick="stopRegistrationCamera()">Batal</button>
+      </div>
+
+      <div id="regProgress"
+        style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
+        Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.
+      </div>
+    </div>
+
+    <button id="btnStartReg" class="btn" onclick="startRegistrationFlow()">Mulai Registrasi</button>
+    <div id="regResult" class="feedback-message"></div>
+  </div>
 
   </div>
 
@@ -645,15 +645,15 @@
       </p>
       <div class="form-group">
         <label for="syncNRP">Nomor Registrasi Pegawai (NRP)</label>
-        <input type="text" id="syncNRP" placeholder="Contoh: Pegawai_A">
+        <input type="text" id="syncNRP" placeholder="Contoh: SNI*******">
       </div>
-      <button class="btn" onclick="syncFaceProfile()" style="margin-bottom: 12px;">Sinkronkan Perangkat</button>
-      <button class="btn btn-secondary" onclick="goToRegistrationFromOverlay()">Registrasi Baru</button>
+      <button id="btnSyncProfile" class="btn" onclick="this.style.display='none'; this.disabled=true; syncFaceProfile(this);" style="margin-bottom: 12px;">Sinkronkan Perangkat</button>
+      <button class="btn btn-secondary" onclick="closeSyncOverlay()">Batal</button>
       <div id="syncResult" class="feedback-message" style="margin-top: 10px;"></div>
     </div>
   </div>
 
-  <script src="pwa_app.js?v=4.6" type="text/javascript"></script>
+  <script src="pwa_app.js?v=4.7" type="text/javascript"></script>
 </body>
 
 </html>
