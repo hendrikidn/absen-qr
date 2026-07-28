@@ -839,6 +839,7 @@ function stopRegistrationCamera() {
   const btnCapture = document.getElementById('btnCapturePhoto');
   if (btnCapture) {
     btnCapture.disabled = false;
+    btnCapture.className = 'btn';
     btnCapture.innerHTML = 'Ambil Foto';
   }
   if (area) area.style.display = 'none';
@@ -854,6 +855,7 @@ async function captureFaceEmbeddings() {
   function setButtonState(loading) {
     if (btnCapture) {
       btnCapture.disabled = loading;
+      btnCapture.className = loading ? 'btn btn-secondary' : 'btn';
       btnCapture.innerHTML = loading ? '⏳ Memproses...' : 'Ambil Foto';
     }
   }
