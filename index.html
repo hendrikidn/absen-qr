@@ -580,7 +580,7 @@
           style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top:-10px; margin-bottom: 14px;">
           Posisikan QR Code di dalam kotak scanner
         </p>
-        <button id="btnRescanQR" class="btn btn-secondary" onclick="restartQRScanner()" style="margin-bottom: 16px;">
+        <button id="btnRescanQR" class="btn btn-secondary" onclick="restartQRScanner()" style="margin-bottom: 8px;">
           <svg style="width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;"
             viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round"
@@ -588,6 +588,32 @@
           </svg>
           Scan Ulang QR Code
         </button>
+
+        <!-- DEBUG PANEL: Tampil saat tombol Scan Ulang diklik -->
+        <div id="debugPanel" style="
+          display: none;
+          background: rgba(0,0,0,0.6);
+          border: 1px solid rgba(99,102,241,0.4);
+          border-radius: 10px;
+          padding: 10px 14px;
+          margin-bottom: 12px;
+          font-size: 0.75rem;
+          font-family: monospace;
+          color: #a5b4fc;
+          word-break: break-all;
+          line-height: 1.7;
+        ">
+          <div style="font-weight:700; color:#818cf8; margin-bottom:6px;">🔍 Debug Info</div>
+          <div id="dbgTimestamp"></div>
+          <div id="dbgScannedQR"></div>
+          <div id="dbgNRP"></div>
+          <div id="dbgIsProcessing"></div>
+          <div id="dbgIsRestarting"></div>
+          <div id="dbgScannerState"></div>
+          <div id="dbgCameraState"></div>
+          <div id="dbgReaderEl"></div>
+          <div id="dbgLog" style="margin-top:6px; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px; color:#6ee7b7;"></div>
+        </div>
       </div>
 
       <div id="scanStep2" style="display: none; position: relative;">
@@ -658,7 +684,7 @@
     </div>
   </div>
 
-  <script src="pwa_app.js?v=3.5" type="text/javascript"></script>
+  <script src="pwa_app.js?v=3.6" type="text/javascript"></script>
 </body>
 
 </html>
