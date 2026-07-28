@@ -338,12 +338,12 @@ async function stopAllCameras() {
   }
   if (_nativeScannerStream) {
     try {
-      _nativeScannerStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
-    } catch (e) {}
+      _nativeScannerStream.getTracks().forEach(t => { try { t.stop(); } catch (e) { } });
+    } catch (e) { }
     _nativeScannerStream = null;
   }
   if (_nativeScannerVideo) {
-    try { _nativeScannerVideo.srcObject = null; } catch (e) {}
+    try { _nativeScannerVideo.srcObject = null; } catch (e) { }
     _nativeScannerVideo = null;
   }
 
@@ -843,7 +843,7 @@ async function onQRScanSuccess(decodedText, decodedResult) {
       }
     }
 
-    dbgLog(`📦 outlet=${outlet}, timestamp=${timestamp}, totp=${totpToken ? totpToken.substring(0,8)+'...' : 'null'}`);
+    dbgLog(`📦 outlet=${outlet}, timestamp=${timestamp}, totp=${totpToken ? totpToken.substring(0, 8) + '...' : 'null'}`);
 
     if (!outlet || !totpToken || !timestamp) {
       throw new Error("Parameter QR Code tidak lengkap: outlet=" + outlet + " totp=" + totpToken + " ts=" + timestamp);
@@ -1296,11 +1296,17 @@ async function sendToGAS(payload) {
     if (resData && resData.status === "error") {
       console.warn("GAS menolak absensi:", resData.message);
       if (challengeText) challengeText.innerText = "❌ Gagal: " + resData.message;
-      showScanResult("❌ Ditolak Server: " + resData.message, "error");
+
+      let extraTip = "";
+      if (resData.message && (resData.message.toLowerCase().includes("perangkat") || resData.message.toLowerCase().includes("device"))) {
+        extraTip = "<br><br><span style='font-size:0.8rem; color:#cbd5e1;'>💡 <strong>Solusi:</strong> Karena data browser pernah dihapus, silakan buka tab <strong>Registrasi</strong> dan lakukan <strong>Mulai Registrasi (Ambil Foto)</strong> untuk memperbarui Perangkat Resmi HP ini di server.</span>";
+      }
+
+      showScanResult("❌ Ditolak Server: " + resData.message + extraTip, "error");
       setTimeout(() => {
         resetToScanStep1();
         startQRScanner();
-      }, 5000);
+      }, 6000);
       return;
     }
 
@@ -1433,9 +1439,11 @@ function updateOfflineBadge() {
 
 function showScanResult(message, type) {
   const resultDiv = document.getElementById('scanResult');
-  resultDiv.innerText = message;
-  resultDiv.className = "feedback-message " + (type === 'success' ? 'feedback-success' : type === 'warning' ? 'feedback-success' : 'feedback-error');
-  resultDiv.style.display = 'block';
+  if (resultDiv) {
+    resultDiv.innerHTML = message;
+    resultDiv.className = "feedback-message " + (type === 'success' ? 'feedback-success' : type === 'warning' ? 'feedback-success' : 'feedback-error');
+    resultDiv.style.display = 'block';
+  }
 
   if (type === 'warning') {
     resultDiv.style.borderColor = 'var(--warning)';
@@ -1657,9 +1665,7 @@ async function uploadFaceEmbeddingToCloud(nrp, embedding, deviceId) {
   }
 }
 
-/**
- * Menyinkronkan Profil Wajah Karyawan dari Cloud jika PWA dibuka di browser baru
- */
+
 /**
  * Menyinkronkan Profil Wajah Karyawan dari Cloud jika PWA dibuka di browser baru / setelah clear cache
  */
@@ -1722,6 +1728,7 @@ async function syncFaceProfile() {
 
     if (data && (data.status === "success" || data.status === "ok")) {
       const embeddingArray = data.message || data.face_embedding || data.embedding || data.data;
+      const serverDeviceId = data.device_id || data.registered_device_id || (data.data && typeof data.data === 'object' ? data.data.device_id : null);
 
       // Simpan di localStorage browser ini
       localStorage.setItem('attendance_registered_nrp', nrp);
@@ -1729,7 +1736,23 @@ async function syncFaceProfile() {
         localStorage.setItem('attendance_registered_embeddings', typeof embeddingArray === 'string' ? embeddingArray : JSON.stringify(embeddingArray));
         registeredEmbeddings = embeddingArray;
       }
-      localStorage.setItem('attendance_registered_device_id', deviceId);
+
+      // Jika server mengembalikan Device ID resmi dari Google Sheets, perbarui local device_id
+      if (serverDeviceId) {
+        localStorage.setItem('attendance_device_id', serverDeviceId);
+        localStorage.setItem('attendance_registered_device_id', serverDeviceId);
+        console.log('[DBG] Device ID resmi disinkronkan dari server:', serverDeviceId);
+      } else {
+        localStorage.setItem('attendance_registered_device_id', deviceId);
+        // Kirim pembaruan device_id ke GAS jika didukung
+        try {
+          fetch(GAS_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "update_device_id", nrp: nrp, device_id: deviceId })
+          }).catch(() => { });
+        } catch (e) { }
+      }
 
       showSyncResult("✅ Perangkat berhasil disinkronkan! Profil NRP " + nrp + " terverifikasi.", "success");
 
