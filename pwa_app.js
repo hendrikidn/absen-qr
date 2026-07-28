@@ -150,84 +150,10 @@ function loadLocalRegistration() {
 }
 
 /**
- * Menghentikan Seluruh Kamera yang Sedang Aktif (QR Reader, Liveness, dan Registrasi)
- */
-async function stopAllCameras() {
-  if (html5QrcodeScanner) {
-    try {
-      await html5QrcodeScanner.stop();
-    } catch (e) {
-      // Abaikan jika scanner memang sedang tidak berjalan
-    }
-    try {
-      html5QrcodeScanner.clear();
-    } catch (e) {}
-    html5QrcodeScanner = null;
-  }
-
-  if (scanStream) {
-    try {
-      scanStream.getTracks().forEach(track => track.stop());
-    } catch(e){}
-    scanStream = null;
-  }
-
-  if (regStream) {
-    try {
-      regStream.getTracks().forEach(track => track.stop());
-    } catch(e){}
-    regStream = null;
-  }
-
-  // Sapu bersih seluruh stream pada elemen <video> di DOM
-  document.querySelectorAll('video').forEach(v => {
-    if (v && v.srcObject) {
-      try {
-        const s = v.srcObject;
-        if (s && s.getTracks) {
-          s.getTracks().forEach(t => t.stop());
-        }
-      } catch(e){}
-      v.srcObject = null;
-    }
-  });
-
-  // Jeda 150ms untuk pelepasan penuh hardware kamera pada OS/Browser
-  await new Promise(r => setTimeout(r, 150));
-}
-
-/**
- * Membuka Stream Kamera secara Resilien dengan Fallback Constraint
- */
-async function getCameraStream(facing) {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error("Browser tidak mendukung akses kamera atau halaman dibuka tanpa HTTPS.");
-  }
-
-  const constraintsList = [
-    { video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 } } },
-    { video: { facingMode: facing } },
-    { video: true }
-  ];
-
-  for (let c of constraintsList) {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia(c);
-      if (stream) return stream;
-    } catch (e) {
-      console.warn("Mencoba constraint kamera berikutnya:", c, e);
-    }
-  }
-  throw new Error("Kamera tidak dapat dibuka. Pastikan izin kamera telah diberikan.");
-}
-
-/**
  * Berpindah Antar View Screen (Scan vs Registrasi)
  */
-async function switchView(viewName) {
+function switchView(viewName) {
   currentView = viewName;
-  await stopAllCameras();
-
   document.querySelectorAll('.view-screen').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
 
@@ -236,10 +162,14 @@ async function switchView(viewName) {
 
   if (viewName === 'scan') {
     document.getElementById('viewScan').classList.add('active');
-    await startQRScanner();
+    stopRegistrationCamera();
+    startQRScanner();
   } else {
     document.getElementById('viewRegister').classList.add('active');
-    stopRegistrationCamera();
+    stopScanCamera();
+    if (html5QrcodeScanner) {
+      html5QrcodeScanner.clear().catch(e => console.log(e));
+    }
   }
 }
 
@@ -251,12 +181,24 @@ async function switchView(viewName) {
  * Menyalakan Kamera QR Code Reader di HP
  */
 async function startQRScanner() {
-  await stopAllCameras();
+  if (html5QrcodeScanner) {
+    try {
+      if (html5QrcodeScanner.isScanning) {
+        await html5QrcodeScanner.stop();
+      }
+      html5QrcodeScanner.clear();
+    } catch (e) {
+      console.warn("Cleanup scanner instance warning:", e);
+    }
+    html5QrcodeScanner = null;
+  }
+
+  // Tampilkan Step 1, Sembunyikan Step 2
   resetToScanStep1();
 
   const config = { 
     fps: 15,
-    aspectRatio: 1.333333 // 4:3 matching viewport
+    aspectRatio: 1.333333 // 4:3 matching viewport (full frame scanning)
   };
 
   // 1. Coba kamera belakang (environment)
@@ -271,7 +213,7 @@ async function startQRScanner() {
     console.log("Kamera QR scanner aktif (kamera belakang).");
   } catch (err1) {
     console.warn("Gagal membuka kamera belakang, mencoba kamera depan/webcam:", err1);
-    await new Promise(r => setTimeout(r, 200));
+    // 2. Fallback: Re-instantiate Html5Qrcode baru & coba kamera user/webcam
     try {
       if (html5QrcodeScanner) {
         try { html5QrcodeScanner.clear(); } catch(e){}
@@ -305,19 +247,22 @@ async function onQRScanSuccess(decodedText, decodedResult) {
       if (!outlet || !totpToken || !timestamp) {
         throw new Error("Parameter URL QR Code tidak lengkap");
       }
-
-      scannedQRData = {
-        outlet: outlet,
-        timestamp: Number(timestamp),
-        totp_token: totpToken
-      };
-
-      // Perbarui URL address bar tanpa mereload halaman
-      if (window.history && window.history.replaceState) {
+      
+      // Hentikan scanner kamera belakang secara bersih sebelum redirect
+      if (html5QrcodeScanner) {
         try {
-          window.history.replaceState({}, document.title, decodedText);
+          if (html5QrcodeScanner.isScanning) {
+            await html5QrcodeScanner.stop();
+          }
+          html5QrcodeScanner.clear();
         } catch(e){}
+        html5QrcodeScanner = null;
       }
+
+      // Redirect langsung ke URL QR Code baru yang di-scan ulang
+      console.log("Mengarahkan browser ke URL QR Code baru:", decodedText);
+      window.location.href = decodedText;
+      return;
     } else {
       // Fallback format lama (JSON) jika bukan URL
       scannedQRData = JSON.parse(decodedText);
@@ -331,27 +276,24 @@ async function onQRScanSuccess(decodedText, decodedResult) {
 
     console.log("QR Code valid terbaca:", scannedQRData);
 
-    // Hentikan scanner kamera belakang secara bersih sebelum beralih ke kamera depan
-    if (html5QrcodeScanner) {
-      try {
-        if (html5QrcodeScanner.isScanning) {
-          await html5QrcodeScanner.stop();
-        }
-        html5QrcodeScanner.clear();
-      } catch(e){}
-      html5QrcodeScanner = null;
-    }
-
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP) {
+      // Matikan scanner secara bersih agar tidak mentrigger callback berulang
+      if (html5QrcodeScanner) {
+        try {
+          if (html5QrcodeScanner.isScanning) {
+            html5QrcodeScanner.stop().catch(e => console.log(e));
+          }
+        } catch(e){}
+      }
       openSyncOverlay(); // Tampilkan overlay registrasi profil Karyawan
       return;
     }
 
-    // Pindah langsung ke Langkah 2: Verifikasi Wajah (Kamera Depan)
+    // 3. Pindah langsung ke Langkah 2: Deteksi Wajah & Liveness
     setTimeout(() => {
       startLivenessCamera();
-    }, 150);
+    }, 50);
 
   } catch (error) {
     console.error("Format QR Code tidak valid:", error);
@@ -373,17 +315,16 @@ function cancelScan() {
  * Memulai ulang scanner QR Code pada Langkah 1
  */
 async function restartQRScanner() {
-  // 1. Matikan kamera verifikasi depan jika sedang aktif
-  stopScanCamera();
-
-  // 2. Bersihkan query parameter di address bar tanpa reload
-  if (window.history && window.history.replaceState) {
-    try {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } catch(e){}
+  // 1. Jika URL saat ini masih menyimpan parameter query lama, reload ke URL bersih tanpa parameter
+  if (window.location.search) {
+    window.location.href = window.location.pathname;
+    return;
   }
 
-  // 3. Reset state tampilan ke Step 1
+  // 2. Matikan kamera verifikasi wajah depan jika sedang menyala
+  stopScanCamera();
+
+  // 3. Reset state & data QR sebelumnya
   resetToScanStep1();
 
   // 4. Nyalakan ulang scanner kamera belakang
@@ -420,7 +361,19 @@ function resetToScanStep1() {
  */
 async function startLivenessCamera() {
   baselineSmileRatio = null; // Reset baseline saat kamera terbuka
-  await stopAllCameras();
+
+  // Pastikan QR scanner belakang dihentikan secara bersih agar tidak mengunci hardware kamera
+  if (html5QrcodeScanner) {
+    try {
+      if (html5QrcodeScanner.isScanning) {
+        await html5QrcodeScanner.stop();
+      }
+      html5QrcodeScanner.clear();
+    } catch (e) {
+      console.warn("Clean up QR scanner error:", e);
+    }
+    html5QrcodeScanner = null;
+  }
 
   document.getElementById('scanStep1').style.display = 'none';
   document.getElementById('scanStep2').style.display = 'block';
@@ -430,7 +383,9 @@ async function startLivenessCamera() {
   const video = document.getElementById('scanFaceVideo');
 
   try {
-    scanStream = await getCameraStream("user");
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: 640, height: 480 } // Kamera depan
+    });
     video.srcObject = scanStream;
 
     // Tunggu video dimuat sebelum memulai loop AI
@@ -439,10 +394,9 @@ async function startLivenessCamera() {
     };
   } catch (error) {
     console.error("Gagal membuka kamera depan:", error);
-    showScanResult("Gagal mengakses kamera depan untuk verifikasi wajah. Pastikan izin akses kamera aktif.", "error");
-    setTimeout(async () => {
-      await restartQRScanner();
-    }, 3000);
+    showScanResult("Gagal mengakses kamera depan untuk verifikasi wajah.", "error");
+    resetToScanStep1();
+    startQRScanner();
   }
 }
 
@@ -807,7 +761,7 @@ function showScanResult(message, type) {
 
 async function startRegistrationFlow() {
   const nrpInput = document.getElementById('regNRP');
-  const nrp = nrpInput ? nrpInput.value.trim() : '';
+  const nrp = nrpInput.value.trim();
 
   if (!nrp) {
     showRegResult("Harap isi NRP Anda sebelum memulai registrasi wajah.", "error");
@@ -815,21 +769,19 @@ async function startRegistrationFlow() {
   }
 
   showRegResult("Membuka kamera depan...", "success");
-  
-  // Hentikan seluruh kamera lain sebelum membuka kamera registrasi
-  await stopAllCameras();
-
   document.getElementById('btnStartReg').style.display = 'none';
   document.getElementById('registerCameraArea').style.display = 'block';
 
   const video = document.getElementById('regFaceVideo');
 
   try {
-    regStream = await getCameraStream("user");
+    regStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: 640, height: 480 }
+    });
     video.srcObject = regStream;
   } catch (error) {
     console.error("Gagal membuka kamera registrasi:", error);
-    showRegResult("Gagal mengakses kamera depan untuk registrasi. Pastikan izin akses kamera aktif.", "error");
+    showRegResult("Gagal mengakses kamera depan untuk registrasi.", "error");
     stopRegistrationCamera();
   }
 }
