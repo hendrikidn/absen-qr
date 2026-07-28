@@ -69,13 +69,6 @@ function checkURLParameters() {
     };
     console.log("Parameter URL terdeteksi dari kamera bawaan HP:", scannedQRData);
     
-    // Hapus parameter URL dari address bar setelah dibaca agar tidak membekas/terpakai ulang
-    if (window.history && window.history.replaceState) {
-      try {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      } catch(e){}
-    }
-
     // Pastikan user terdaftar di ponsel ini
     const localNRP = localStorage.getItem('attendance_registered_nrp');
     if (!localNRP) {
@@ -237,7 +230,7 @@ async function onQRScanSuccess(decodedText, decodedResult) {
   try {
     console.log("QR Code terdeteksi:", decodedText);
 
-    // 1. Periksa jika decodedText berupa URL web resmi
+    // 1. Periksa jika decodedText berupa URL atau JSON string
     if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
       const url = new URL(decodedText);
       const outlet = url.searchParams.get('outlet') || url.searchParams.get('outlet_id');
@@ -248,23 +241,13 @@ async function onQRScanSuccess(decodedText, decodedResult) {
         throw new Error("Parameter URL QR Code tidak lengkap");
       }
       
-      // Hentikan scanner kamera belakang secara bersih sebelum redirect
-      if (html5QrcodeScanner) {
-        try {
-          if (html5QrcodeScanner.isScanning) {
-            await html5QrcodeScanner.stop();
-          }
-          html5QrcodeScanner.clear();
-        } catch(e){}
-        html5QrcodeScanner = null;
-      }
-
-      // Redirect langsung ke URL QR Code baru yang di-scan ulang
-      console.log("Mengarahkan browser ke URL QR Code baru:", decodedText);
-      window.location.href = decodedText;
-      return;
+      scannedQRData = {
+        outlet: outlet,
+        timestamp: Number(timestamp),
+        totp_token: totpToken
+      };
     } else {
-      // Fallback format lama (JSON) jika bukan URL
+      // Fallback format lama (JSON)
       scannedQRData = JSON.parse(decodedText);
       const outletVal = scannedQRData.outlet || scannedQRData.outlet_id;
       
@@ -291,6 +274,7 @@ async function onQRScanSuccess(decodedText, decodedResult) {
     }
 
     // 3. Pindah langsung ke Langkah 2: Deteksi Wajah & Liveness
+    // Menggunakan setTimeout pendek agar callback onQRScanSuccess selesai tanpa mengunci thread scanner
     setTimeout(() => {
       startLivenessCamera();
     }, 50);
@@ -315,38 +299,18 @@ function cancelScan() {
  * Memulai ulang scanner QR Code pada Langkah 1
  */
 async function restartQRScanner() {
-  // 1. Jika URL saat ini masih menyimpan parameter query lama, reload ke URL bersih tanpa parameter
-  if (window.location.search) {
-    window.location.href = window.location.pathname;
-    return;
-  }
-
-  // 2. Matikan kamera verifikasi wajah depan jika sedang menyala
-  stopScanCamera();
-
-  // 3. Reset state & data QR sebelumnya
-  resetToScanStep1();
-
-  // 4. Nyalakan ulang scanner kamera belakang
+  const resultDiv = document.getElementById('scanResult');
+  if (resultDiv) resultDiv.style.display = 'none';
   showScanResult("⏳ Memulai ulang kamera QR Code scanner...", "success");
   await startQRScanner();
-
   setTimeout(() => {
-    const resultDiv = document.getElementById('scanResult');
-    if (resultDiv && resultDiv.innerText.indexOf("Memulai ulang") !== -1) {
-      resultDiv.style.display = 'none';
-    }
-  }, 1200);
+    if (resultDiv) resultDiv.style.display = 'none';
+  }, 1500);
 }
 
 let baselineSmileRatio = null;
 
 function resetToScanStep1() {
-  if (window.history && window.history.replaceState) {
-    try {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } catch(e){}
-  }
   document.getElementById('scanStep1').style.display = 'block';
   document.getElementById('scanStep2').style.display = 'none';
   document.getElementById('scanResult').style.display = 'none';
@@ -796,7 +760,7 @@ function stopRegistrationCamera() {
 }
 
 /**
- * Mengambil Sampel Embedding Wajah untuk NRP Karyawan (1 Foto Langsung)
+ * Mengambil Sampel Embedding Wajah untuk NRP Karyawan
  */
 async function captureFaceEmbeddings() {
   if (!isModelsLoaded) return;
