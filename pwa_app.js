@@ -816,6 +816,13 @@ async function startRegistrationFlow() {
   document.getElementById('btnStartReg').style.display = 'none';
   document.getElementById('registerCameraArea').style.display = 'block';
 
+  const btnCapture = document.getElementById('btnCapturePhoto');
+  if (btnCapture) {
+    btnCapture.disabled = false;
+    btnCapture.style.display = 'block';
+    btnCapture.innerHTML = 'Ambil Foto';
+  }
+
   const video = document.getElementById('regFaceVideo');
 
   try {
