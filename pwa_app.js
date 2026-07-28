@@ -108,15 +108,75 @@ function dbgLog(msg) {
 }
 
 /**
- * Mendapatkan atau Membuat UUID Unik Perangkat (Device ID Persistent)
+ * Mendapatkan atau Membuat Device ID yang KONSTAN berbasis Hardware Fingerprint HP.
+ * ID ini TIDAK BERUBAH meskipun cache/site data browser dihapus.
  */
 function getOrCreateDeviceId() {
   let deviceId = localStorage.getItem('attendance_device_id');
-  if (!deviceId) {
-    deviceId = 'DEV-' + (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2)));
-    localStorage.setItem('attendance_device_id', deviceId);
+  if (deviceId && deviceId.startsWith('DEV-FP-')) {
+    return deviceId;
   }
+
+  // Buat Hardware Fingerprint konstan berdasarkan spesifikasi fisik HP
+  try {
+    const fpData = [
+      navigator.userAgent || '',
+      navigator.language || '',
+      screen.width + 'x' + screen.height + 'x' + (screen.colorDepth || 24),
+      navigator.hardwareConcurrency || 'cpu-x',
+      navigator.deviceMemory || 'mem-x',
+      Intl.DateTimeFormat().resolvedOptions().timeZone || 'tz-x',
+      getCanvasFingerprint()
+    ].join('||');
+
+    const hash = fnv1aHash(fpData);
+    deviceId = 'DEV-FP-' + hash;
+  } catch (e) {
+    // Fallback jika terjadi kesalahan saat fingerprinting
+    deviceId = 'DEV-FP-' + Math.abs(fnv1aHash(navigator.userAgent || 'fallback')).toString(16).toUpperCase().padStart(8, '0');
+  }
+
+  try {
+    localStorage.setItem('attendance_device_id', deviceId);
+  } catch (e) { }
+
   return deviceId;
+}
+
+/**
+ * Hash Canvas sederhana untuk fingerprinting GPU/Render Engine HP
+ */
+function getCanvasFingerprint() {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 50;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return 'no-ctx';
+    ctx.textBaseline = 'top';
+    ctx.font = "14px 'Arial'";
+    ctx.fillStyle = '#f60';
+    ctx.fillRect(125, 1, 62, 20);
+    ctx.fillStyle = '#069';
+    ctx.fillText('AttendancePWA,1.0', 2, 15);
+    ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+    ctx.fillText('AttendancePWA,1.0', 4, 17);
+    return canvas.toDataURL();
+  } catch (e) {
+    return 'canvas-err';
+  }
+}
+
+/**
+ * FNV-1a Hash 32-bit (Konversi string fingerprint ke ID hex 8 karakter yang unik & stabil)
+ */
+function fnv1aHash(str) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  return (hash >>> 0).toString(16).toUpperCase().padStart(8, '0');
 }
 
 // Muat Model face-api.js saat halaman dibuka
