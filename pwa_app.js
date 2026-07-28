@@ -28,6 +28,7 @@ let currentAttendanceType = 'CLOCK_IN';
  * Mengubah Jenis Absensi yang Dipilih Pengguna
  */
 function setAttendanceType(type) {
+  console.log('[DBG] setAttendanceType dipanggil dengan type:', type);
   const allowed = ['CLOCK_IN', 'START_BREAK', 'STOP_BREAK', 'CLOCK_OUT'];
   if (!allowed.includes(type)) type = 'CLOCK_IN';
   currentAttendanceType = type;
@@ -43,14 +44,21 @@ function setAttendanceType(type) {
     }
   });
 
-  const labelMap = {
-    'CLOCK_IN': 'Masuk (Clock In)',
-    'START_BREAK': 'Mulai Istirahat (Start Break)',
-    'STOP_BREAK': 'Selesai Istirahat (Stop Break)',
-    'CLOCK_OUT': 'Pulang (Clock Out)'
+  const badgeMap = {
+    'CLOCK_IN': '<span style="color:#10b981; font-weight:700;">🟢 Masuk (Clock In)</span>',
+    'START_BREAK': '<span style="color:#f59e0b; font-weight:700;">☕ Mulai Istirahat (Start Break)</span>',
+    'STOP_BREAK': '<span style="color:#06b6d4; font-weight:700;">🥪 Selesai Istirahat (Stop Break)</span>',
+    'CLOCK_OUT': '<span style="color:#f43f5e; font-weight:700;">🔴 Pulang (Clock Out)</span>'
   };
-  console.log('[DBG] Jenis Absensi diubah ke:', type, '(' + labelMap[type] + ')');
+
+  const badgeEl = document.getElementById('activeModeBadge');
+  if (badgeEl) {
+    badgeEl.innerHTML = 'Mode Aktif: ' + (badgeMap[type] || type);
+  }
 }
+
+// Pastikan fungsi ini globally attached ke window agar onclick dari HTML 100% selalu dapat memanggilnya
+window.setAttendanceType = setAttendanceType;
 
 /**
  * Mendapatkan Label Bahasa Indonesia untuk Jenis Absensi
