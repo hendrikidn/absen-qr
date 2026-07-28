@@ -766,7 +766,11 @@
       </div>
       <button id="btnSyncProfile" class="btn"
         onclick="this.style.display='none'; this.disabled=true; syncFaceProfile(this);"
-        style="margin-bottom: 12px;">Sinkronkan Perangkat</button>
+        style="margin-bottom: 10px;">Sinkronkan Perangkat</button>
+      <button type="button" class="btn btn-secondary" onclick="goToRegistrationFromOverlay()"
+        style="margin-bottom: 10px; border-color: rgba(99, 102, 241, 0.4); color: var(--text-main);">
+        📝 Belum Terdaftar? Ke Tab Registrasi
+      </button>
       <button class="btn btn-secondary" onclick="closeSyncOverlay()">Batal</button>
       <div id="syncResult" class="feedback-message" style="margin-top: 10px;"></div>
     </div>
