@@ -496,9 +496,15 @@
             </div>
           </div>
         </div>
-        <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top:-10px; margin-bottom: 20px;">
+        <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top:-10px; margin-bottom: 14px;">
           Posisikan QR Code di dalam kotak scanner
         </p>
+        <button id="btnRescanQR" class="btn btn-secondary" onclick="restartQRScanner()" style="margin-bottom: 16px;">
+          <svg style="width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Scan Ulang QR Code
+        </button>
       </div>
 
       <div id="scanStep2" style="display: none; position: relative;">
