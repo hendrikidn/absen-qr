@@ -298,20 +298,25 @@
       transform: translateY(1px);
     }
 
-    .btn:disabled {
-      background: rgba(99, 102, 241, 0.4);
-      color: rgba(255, 255, 255, 0.5);
-      cursor: not-allowed;
-      transform: none;
+    .btn:disabled, .btn-secondary:disabled {
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: rgba(255, 255, 255, 0.4) !important;
+      cursor: not-allowed !important;
+      pointer-events: none !important;
+      transform: none !important;
+      opacity: 0.5 !important;
+      box-shadow: none !important;
     }
 
     .btn-secondary {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: var(--text-muted) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      box-shadow: none !important;
     }
 
     .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.15) !important;
     }
 
     /* Statuses and Alerts */
