@@ -371,33 +371,29 @@ async function switchView(viewName) {
  * Membuka Stream Kamera secara Andal dengan Fallback Otomatis
  */
 async function openCameraStream(facingMode = "user") {
-  let stream = null;
-  const constraintsPrimary = { video: { facingMode: { ideal: facingMode } } };
+  const attempts = [
+    { video: { facingMode: { ideal: facingMode } } },
+    { video: { facingMode: facingMode } },
+    { video: { facingMode: "user" } },
+    { video: true }
+  ];
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  let lastError = null;
+
+  for (let i = 0; i < attempts.length; i++) {
     try {
-      stream = await navigator.mediaDevices.getUserMedia(constraintsPrimary);
-      return stream;
-    } catch (err1) {
-      console.warn(`[DBG] openCameraStream attempt ${attempt} failed (${err1.name}):`, err1);
-
-      // Jika AbortError / NotReadableError, berikan jeda 500ms agar hardware rilis
-      if (attempt < 3 && (err1.name === 'AbortError' || err1.name === 'NotReadableError' || err1.name === 'DOMException')) {
-        await new Promise(r => setTimeout(r, 500));
-        continue;
-      }
-
-      if (attempt === 2) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          return stream;
-        } catch (err2) { }
-      }
-
-      if (attempt === 3) throw err1;
+      console.log(`[DBG] openCameraStream attempt ${i + 1} with constraints:`, attempts[i]);
+      const stream = await navigator.mediaDevices.getUserMedia(attempts[i]);
+      if (stream) return stream;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[DBG] openCameraStream attempt ${i + 1} failed (${err.name} - ${err.message}):`, err);
+      // Beri jeda 600ms antara setiap percobaan agar driver hardware OS rilis penuh
+      await new Promise(r => setTimeout(r, 600));
     }
   }
-  return stream;
+
+  throw lastError || new Error("Gagal mengaktifkan modul kamera HP.");
 }
 
 /**
@@ -1302,7 +1298,10 @@ async function restartQRScanner() {
 async function startLivenessCamera() {
   baselineSmileRatio = null; // Reset baseline saat kamera terbuka
 
-  try { await stopAllCameras(); } catch (e) { }
+  try { 
+    await stopAllCameras();
+    await new Promise(r => setTimeout(r, 400));
+  } catch (e) { }
 
   document.getElementById('scanStep1').style.display = 'none';
   document.getElementById('scanStep2').style.display = 'block';
@@ -1326,9 +1325,7 @@ async function startLivenessCamera() {
     }
   } catch (error) {
     console.error("Gagal membuka kamera depan:", error);
-    showScanResult("Gagal mengakses kamera depan: " + (error.message || error.toString()) + ". Pastikan izin kamera aktif.", "error");
-    resetToScanStep1();
-    startQRScanner();
+    showScanResult("Gagal mengakses kamera depan: " + (error.message || error.toString()) + ".<br><button onclick='startLivenessCamera()' class='btn' style='margin-top:10px; padding:8px 16px; font-size:0.85rem; width:auto; display:inline-block;'>🔄 Coba Buka Kamera Lagi</button>", "error");
   }
 }
 
@@ -1801,9 +1798,12 @@ async function startRegistrationFlow() {
     return;
   }
 
-  showRegResult("Membuka kamera depan...", "success");
+  showRegResult("⏳ Membuka kamera depan...", "success");
 
-  try { await stopAllCameras(); } catch (e) { }
+  try { 
+    await stopAllCameras();
+    await new Promise(r => setTimeout(r, 400));
+  } catch (e) { }
 
   document.getElementById('btnStartReg').style.display = 'none';
   document.getElementById('registerCameraArea').style.display = 'block';
@@ -1821,9 +1821,11 @@ async function startRegistrationFlow() {
     regStream = await openCameraStream("user");
     video.srcObject = regStream;
     await video.play().catch(e => console.warn("Video play warning:", e));
+    const regRes = document.getElementById('regResult');
+    if (regRes) regRes.style.display = 'none';
   } catch (error) {
     console.error("Gagal membuka kamera registrasi:", error);
-    showRegResult("Gagal mengakses kamera depan: " + (error.message || error.toString()) + ". Pastikan izin kamera diizinkan di browser Anda.", "error");
+    showRegResult("Gagal mengakses kamera: " + (error.message || error.toString()) + ".<br><button onclick='startRegistrationFlow()' class='btn' style='margin-top:10px; padding:8px 16px; font-size:0.85rem; width:auto; display:inline-block;'>🔄 Coba Buka Kamera Lagi</button>", "error");
     stopRegistrationCamera();
   }
 }
