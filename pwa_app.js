@@ -57,13 +57,13 @@ window.addEventListener('DOMContentLoaded', async () => {
  */
 function checkURLParameters() {
   const urlParams = new URLSearchParams(window.location.search);
-  const outletId = urlParams.get('outlet_id');
+  const outlet = urlParams.get('outlet') || urlParams.get('outlet_id');
   const timestamp = urlParams.get('timestamp');
   const totpToken = urlParams.get('totp_token');
   
-  if (outletId && timestamp && totpToken) {
+  if (outlet && timestamp && totpToken) {
     scannedQRData = {
-      outlet_id: outletId,
+      outlet: outlet,
       timestamp: Number(timestamp),
       totp_token: totpToken
     };
@@ -243,26 +243,28 @@ async function onQRScanSuccess(decodedText, decodedResult) {
     // 1. Periksa jika decodedText berupa URL atau JSON string
     if (decodedText.startsWith("http://") || decodedText.startsWith("https://")) {
       const url = new URL(decodedText);
-      const outletId = url.searchParams.get('outlet_id');
+      const outlet = url.searchParams.get('outlet') || url.searchParams.get('outlet_id');
       const timestamp = url.searchParams.get('timestamp');
       const totpToken = url.searchParams.get('totp_token');
       
-      if (!outletId || !totpToken || !timestamp) {
+      if (!outlet || !totpToken || !timestamp) {
         throw new Error("Parameter URL QR Code tidak lengkap");
       }
       
       scannedQRData = {
-        outlet_id: outletId,
+        outlet: outlet,
         timestamp: Number(timestamp),
         totp_token: totpToken
       };
     } else {
       // Fallback format lama (JSON)
       scannedQRData = JSON.parse(decodedText);
+      const outletVal = scannedQRData.outlet || scannedQRData.outlet_id;
       
-      if (!scannedQRData.outlet_id || !scannedQRData.totp_token || !scannedQRData.timestamp) {
+      if (!outletVal || !scannedQRData.totp_token || !scannedQRData.timestamp) {
         throw new Error("Format JSON QR Code tidak sesuai");
       }
+      scannedQRData.outlet = outletVal;
     }
 
     console.log("QR Code valid terbaca:", scannedQRData);
@@ -475,7 +477,7 @@ function submitAttendance() {
   const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
   const challengeText = document.getElementById('challengeText');
 
-  if (!scannedQRData || !scannedQRData.outlet_id) {
+  if (!scannedQRData || (!scannedQRData.outlet && !scannedQRData.outlet_id)) {
     console.error("Data QR Code tidak ditemukan!");
     showScanResult("Data QR Code tidak valid. Silakan scan ulang QR Code.", "error");
     setTimeout(() => {
@@ -493,7 +495,7 @@ function submitAttendance() {
   function proceedWithPayload(lat, lng) {
     const payload = {
       nrp: localNRP,
-      outlet_id: scannedQRData.outlet_id,
+      outlet: scannedQRData.outlet || scannedQRData.outlet_id,
       totp_token: scannedQRData.totp_token,
       timestamp: scannedQRData.timestamp,
       latitude: lat,
@@ -776,14 +778,17 @@ async function captureFaceEmbeddings() {
     // Di sini kita langsung simpan embedding (berupa array float32)
     const embeddingArray = Array.from(detection.descriptor);
 
+    const deviceId = getOrCreateDeviceId();
+
     localStorage.setItem('attendance_registered_nrp', nrp);
     localStorage.setItem('attendance_registered_embeddings', JSON.stringify(embeddingArray));
+    localStorage.setItem('attendance_registered_device_id', deviceId);
 
-    // Kirim registrasi wajah ke cloud Google Sheets
-    uploadFaceEmbeddingToCloud(nrp, embeddingArray);
+    // Kirim registrasi wajah & Device ID ke cloud Google Sheets
+    uploadFaceEmbeddingToCloud(nrp, embeddingArray, deviceId);
 
     countSpan.innerText = "3"; // Simulasi selesai
-    showRegResult("Registrasi Wajah NRP " + nrp + " Sukses! Data wajah tersimpan secara lokal & cloud.", "success");
+    showRegResult("Registrasi Wajah NRP " + nrp + " Sukses! Device ID (" + deviceId + ") & Data Wajah tersimpan di tab Face_Embedding.", "success");
 
     // Perbarui referensi global
     registeredEmbeddings = embeddingArray;
@@ -806,9 +811,10 @@ function showRegResult(message, type) {
 }
 
 /**
- * Mengunggah data template wajah ke cloud (Google Sheets) setelah registrasi sukses
+ * Mengunggah data template wajah & Device ID ke cloud (Google Sheets tab Face_Embedding) setelah registrasi sukses
  */
-async function uploadFaceEmbeddingToCloud(nrp, embedding) {
+async function uploadFaceEmbeddingToCloud(nrp, embedding, deviceId) {
+  const activeDeviceId = deviceId || getOrCreateDeviceId();
   if (!navigator.onLine) {
     console.log("Registrasi wajah cloud ditunda (offline). Data wajah disimpan lokal.");
     return;
@@ -818,7 +824,7 @@ async function uploadFaceEmbeddingToCloud(nrp, embedding) {
       action: "register_face",
       nrp: nrp,
       face_embedding: embedding,
-      device_id: getOrCreateDeviceId()
+      device_id: activeDeviceId
     };
     
     await fetch(GAS_URL, {
@@ -827,7 +833,7 @@ async function uploadFaceEmbeddingToCloud(nrp, embedding) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    console.log("Registrasi wajah & Device ID untuk NRP " + nrp + " berhasil diunggah ke Google Sheets.");
+    console.log("Registrasi wajah & Device ID (" + activeDeviceId + ") untuk NRP " + nrp + " berhasil diunggah ke Google Sheets.");
   } catch (err) {
     console.error("Gagal mengunggah data wajah ke cloud:", err);
   }
