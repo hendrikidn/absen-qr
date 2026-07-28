@@ -211,6 +211,7 @@ function checkURLParameters() {
       totp_token: totpToken
     };
     console.log("Parameter URL terdeteksi dari kamera bawaan HP:", scannedQRData);
+    fetchOutletShifts(outlet);
 
     // Bersihkan parameter query URL dari address bar agar tidak membingungkan saat navigasi/tab switch
     try {
@@ -605,7 +606,7 @@ async function fetchOutletShifts(outletName) {
  * Menangani Klik Tombol Masuk Kerja (Clock In)
  * Jika terdapat pilihan shift per outlet, tampilkan dialog pemilihan shift.
  */
-function handleClockInClick() {
+async function handleClockInClick() {
   const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
   const todayDateStr = new Date().toISOString().split('T')[0];
   const localStatusKey = 'attendance_status_' + localNRP + '_' + todayDateStr;
@@ -619,11 +620,16 @@ function handleClockInClick() {
     return;
   }
 
-  if (cachedOutletShifts && cachedOutletShifts.length > 1) {
+  const outletName = (scannedQRData && (scannedQRData.outlet || scannedQRData.outlet_id)) || '';
+
+  // Jika shift belum sempat di-fetch/di-load, pastikan di-fetch terlebih dahulu
+  if ((!cachedOutletShifts || cachedOutletShifts.length === 0) && outletName) {
+    showScanResult("⏳ Memuat opsi shift jam kerja...", "info");
+    await fetchOutletShifts(outletName);
+  }
+
+  if (cachedOutletShifts && cachedOutletShifts.length > 0) {
     openShiftOverlay();
-  } else if (cachedOutletShifts && cachedOutletShifts.length === 1) {
-    const defaultWH = cachedOutletShifts[0].working_hour || cachedOutletShifts[0].shift || "";
-    submitAttendance('CLOCK_IN', defaultWH);
   } else {
     submitAttendance('CLOCK_IN', '');
   }
@@ -1058,6 +1064,8 @@ async function onQRScanSuccess(decodedText, decodedResult) {
       timestamp: Number(timestamp),
       totp_token: totpToken
     };
+
+    fetchOutletShifts(outlet);
 
     console.log("QR Code baru berhasil diproses:", scannedQRData);
     dbgLog('✅ QR valid! Menjeda scanner...');
