@@ -1527,6 +1527,14 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "")
     else if (attendanceType === "STOP_BREAK" || attendanceType === "END_BREAK") typeLabel = "Stop Break";
     else if (attendanceType === "CLOCK_OUT") typeLabel = "Clock Out";
 
+    const reasonSelect = document.getElementById("attendanceReasonSelect");
+    const selectedReason = reasonSelect ? reasonSelect.value.trim() : "";
+
+    let approvalTag = "";
+    if (selectedReason) {
+      approvalTag = " [Supervisor Approval Required | " + selectedReason + "]";
+    }
+
     const payload = {
       nrp: localNRP,
       outlet: scannedQRData.outlet || scannedQRData.outlet_id,
@@ -1541,7 +1549,7 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "")
       attendance_type: attendanceType,
       working_hour: selectedWorkingHour || "",
       device_id: getOrCreateDeviceId(),
-      notes: "Absen " + typeLabel + (selectedWorkingHour ? (" (" + selectedWorkingHour + ")") : "") + " via PWA"
+      notes: "Absen " + typeLabel + (selectedWorkingHour ? (" (" + selectedWorkingHour + ")") : "") + " via PWA" + approvalTag
     };
 
     if (navigator.onLine) {

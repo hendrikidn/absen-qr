@@ -695,6 +695,18 @@
 
       <div id="scanStep3" style="display: none; position: relative;">
         <label>Langkah 3: Pilih Menu Absensi</label>
+        
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label for="attendanceReasonSelect" style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Kategori / Alasan Absen (Opsional)</label>
+          <select id="attendanceReasonSelect" style="width: 100%; padding: 10px 12px; border-radius: 12px; background: rgba(15, 23, 42, 0.8); color: var(--text-main); border: 1px solid var(--card-border); font-size: 0.85rem; outline: none;">
+            <option value="">Normal / Rutin (Default)</option>
+            <option value="Lupa Absen">Lupa Absen (Perlu Persetujuan Supervisor)</option>
+            <option value="Izin Terlambat">Izin Terlambat (Perlu Persetujuan Supervisor)</option>
+            <option value="Pulang Awal">Pulang Awal (Perlu Persetujuan Supervisor)</option>
+            <option value="Tugas Luar">Dinas / Tugas Luar</option>
+          </select>
+        </div>
+
         <div class="menu-grid-2x2">
           <button type="button" class="menu-card clock-in" onclick="handleClockInClick()">
             <div class="menu-icon">🟢</div>
