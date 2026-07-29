@@ -4,8 +4,8 @@
  */
 
 // Konfigurasi Endpoint Google Apps Script Web App Anda
-// GANTI URL INI DENGAN URL DEPLOYMENT GAS ANDA
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzlHwt3UmiOK8DAXoPdF8RGMYuEUFOrD4bGcBfUQlOzlx7gQUfTucZfkHQE-vZvOiWFVg/exec";
+// Nilai __GAS_URL__ akan diinjeksi secara otomatis oleh GitHub Actions dari GitHub Secret (secrets.GAS_URL)
+const GAS_URL = "__GAS_URL__";
 
 // Global Variables
 let currentView = 'scan';
