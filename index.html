@@ -695,19 +695,8 @@
 
       <div id="scanStep3" style="display: none; position: relative;">
         <label>Langkah 3: Pilih Menu Absensi</label>
-        
-        <div class="form-group" style="margin-bottom: 14px;">
-          <label for="attendanceReasonSelect" style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Kategori / Alasan Absen (Opsional)</label>
-          <select id="attendanceReasonSelect" style="width: 100%; padding: 10px 12px; border-radius: 12px; background: rgba(15, 23, 42, 0.8); color: var(--text-main); border: 1px solid var(--card-border); font-size: 0.85rem; outline: none;">
-            <option value="">Normal / Rutin (Default)</option>
-            <option value="Lupa Absen">Lupa Absen (Perlu Persetujuan Supervisor)</option>
-            <option value="Izin Terlambat">Izin Terlambat (Perlu Persetujuan Supervisor)</option>
-            <option value="Pulang Awal">Pulang Awal (Perlu Persetujuan Supervisor)</option>
-            <option value="Tugas Luar">Dinas / Tugas Luar</option>
-          </select>
-        </div>
 
-        <div class="menu-grid-2x2">
+        <div class="menu-grid-2x2" style="margin-top: 14px;">
           <button type="button" class="menu-card clock-in" onclick="handleClockInClick()">
             <div class="menu-icon">🟢</div>
             <div class="menu-title">Masuk Kerja</div>
@@ -720,7 +709,7 @@
             <div class="menu-icon">🔄</div>
             <div class="menu-title">Selesai Istirahat</div>
           </button>
-          <button type="button" class="menu-card clock-out" onclick="submitAttendance('CLOCK_OUT')">
+          <button type="button" class="menu-card clock-out" onclick="handleClockOutClick()">
             <div class="menu-icon">🔴</div>
             <div class="menu-title">Pulang Kerja</div>
           </button>
@@ -839,7 +828,23 @@
     </div>
   </div>
 
-  <script src="pwa_app.js?v=5.0" type="text/javascript"></script>
+  <!-- Reason Selection Modal (Pilih Kategori / Alasan Absen) -->
+  <div class="overlay" id="reasonSelectOverlay" style="display: none;">
+    <div class="modal-card">
+      <h2 id="reasonModalTitle" style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; text-align: center; color: var(--text-main);">
+        📋 Pilih Kategori / Alasan
+      </h2>
+      <p id="reasonModalSub" style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">
+        Pilih opsi kategori absensi jika sesuai
+      </p>
+      <div id="reasonOptionsContainer" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 300px; overflow-y: auto;">
+        <!-- Dynamic reason options -->
+      </div>
+      <button class="btn btn-secondary" onclick="closeReasonOverlay()">Batal</button>
+    </div>
+  </div>
+
+  <script src="pwa_app.js?v=5.2" type="text/javascript"></script>
 </body>
 
 </html>

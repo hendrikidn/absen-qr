@@ -40,6 +40,22 @@ function getTodayDateStr() {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Membersihkan status absensi lokal dari hari-hari sebelumnya di LocalStorage
+ */
+function cleanupOldAttendanceStatus() {
+  try {
+    const todayDateStr = getTodayDateStr();
+    const prefix = 'attendance_status_';
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix) && !key.endsWith('_' + todayDateStr)) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch (e) { }
+}
+
 // =========================================================================
 // DEBUG HELPERS
 // =========================================================================
@@ -193,6 +209,7 @@ function fnv1aHash(str) {
 
 // Muat Model face-api.js saat halaman dibuka
 window.addEventListener('DOMContentLoaded', async () => {
+  cleanupOldAttendanceStatus();
   setupNetworkMonitoring();
   loadLocalRegistration();
   updateOfflineBadge();
@@ -619,6 +636,9 @@ async function fetchOutletShifts(outletName) {
   }
 }
 
+let pendingAttendanceType = null;
+let pendingWorkingHour = "";
+
 /**
  * Menangani Klik Tombol Masuk Kerja (Clock In)
  * Jika terdapat pilihan shift per outlet, tampilkan dialog pemilihan shift.
@@ -648,8 +668,39 @@ async function handleClockInClick() {
   if (cachedOutletShifts && cachedOutletShifts.length > 0) {
     openShiftOverlay();
   } else {
-    submitAttendance('CLOCK_IN', '');
+    openReasonOverlay('CLOCK_IN', '');
   }
+}
+
+/**
+ * Menangani Klik Tombol Pulang Kerja (Clock Out)
+ */
+function handleClockOutClick() {
+  const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
+  const todayDateStr = getTodayDateStr();
+  const localStatusKey = 'attendance_status_' + localNRP + '_' + todayDateStr;
+  let localStatus = {};
+  try {
+    localStatus = JSON.parse(localStorage.getItem(localStatusKey) || '{}');
+  } catch (e) { }
+
+  const hasClockIn = localStatus.hasClockIn || false;
+  const lastType = localStatus.lastType || null;
+
+  if (!hasClockIn) {
+    showScanResult("❌ Absensi Ditolak: Anda harus melakukan Clock In (Masuk Kerja) terlebih dahulu sebelum Clock Out.", "error");
+    return;
+  }
+  if (lastType === "START_BREAK") {
+    showScanResult("❌ Absensi Ditolak: Anda sedang dalam masa Istirahat. Silakan lakukan Stop Break terlebih dahulu sebelum Clock Out.", "error");
+    return;
+  }
+  if (lastType === "CLOCK_OUT") {
+    showScanResult("❌ Absensi Ditolak: Anda sudah melakukan Clock Out (Pulang Kerja) untuk hari ini.", "error");
+    return;
+  }
+
+  openReasonOverlay('CLOCK_OUT', '');
 }
 
 /**
@@ -661,7 +712,7 @@ function openShiftOverlay() {
   const container = document.getElementById('shiftOptionsContainer');
 
   if (!overlay || !container) {
-    submitAttendance('CLOCK_IN', '');
+    openReasonOverlay('CLOCK_IN', '');
     return;
   }
 
@@ -684,7 +735,7 @@ function openShiftOverlay() {
     btn.innerHTML = `<span style="font-weight: 600; font-size: 0.95rem;">${shiftText}</span><span style="font-size:0.85rem; color:var(--text-muted);">${hourText}</span>`;
     btn.onclick = () => {
       closeShiftOverlay();
-      submitAttendance('CLOCK_IN', hourVal);
+      openReasonOverlay('CLOCK_IN', hourVal);
     };
     container.appendChild(btn);
   });
@@ -694,6 +745,67 @@ function openShiftOverlay() {
 
 function closeShiftOverlay() {
   const overlay = document.getElementById('shiftSelectOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+/**
+ * Membuka Modal Pemilihan Kategori / Alasan Absen
+ * @param {string} attendanceType - 'CLOCK_IN' atau 'CLOCK_OUT'
+ * @param {string} selectedWorkingHour - Shift jam kerja yang telah dipilih
+ */
+function openReasonOverlay(attendanceType, selectedWorkingHour = '') {
+  pendingAttendanceType = attendanceType;
+  pendingWorkingHour = selectedWorkingHour;
+
+  const overlay = document.getElementById('reasonSelectOverlay');
+  const container = document.getElementById('reasonOptionsContainer');
+  const title = document.getElementById('reasonModalTitle');
+  const sub = document.getElementById('reasonModalSub');
+
+  if (!overlay || !container) {
+    submitAttendance(attendanceType, selectedWorkingHour, '');
+    return;
+  }
+
+  container.innerHTML = '';
+
+  let options = [];
+  if (attendanceType === 'CLOCK_IN') {
+    if (title) title.innerText = "📋 Kategori / Alasan Masuk Kerja";
+    if (sub) sub.innerText = "Silakan pilih opsi kategori absensi masuk:";
+    options = [
+      { label: "🟢 Absen Biasa / Tepat Waktu", value: "", note: "Absen harian rutin tanpa perizinan khusus" },
+      { label: "⏰ Izin Terlambat", value: "Izin Terlambat", note: "Memerlukan Persetujuan Supervisor" },
+      { label: "📝 Lupa Absen", value: "Lupa Absen", note: "Memerlukan Persetujuan Supervisor" }
+    ];
+  } else if (attendanceType === 'CLOCK_OUT') {
+    if (title) title.innerText = "📋 Kategori / Alasan Pulang Kerja";
+    if (sub) sub.innerText = "Silakan pilih opsi kategori absensi pulang:";
+    options = [
+      { label: "🔴 Pulang Normal / Sesuai Jadwal", value: "", note: "Pulang sesuai jam kerja rutin" },
+      { label: "🏃 Pulang Awal", value: "Pulang Awal", note: "Memerlukan Persetujuan Supervisor" }
+    ];
+  }
+
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn';
+    btn.style.cssText = 'background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; flex-direction: column; align-items: flex-start; padding: 12px 16px; color: var(--text-main); font-weight: 600; text-align: left; border-radius: 12px; cursor: pointer; transition: all 0.2s;';
+
+    btn.innerHTML = `<span style="font-weight: 600; font-size: 0.95rem; color: #f8fafc;">${opt.label}</span><span style="font-size:0.75rem; color: var(--text-muted); margin-top: 2px;">${opt.note}</span>`;
+    btn.onclick = () => {
+      closeReasonOverlay();
+      submitAttendance(pendingAttendanceType, pendingWorkingHour, opt.value);
+    };
+    container.appendChild(btn);
+  });
+
+  overlay.style.display = 'flex';
+}
+
+function closeReasonOverlay() {
+  const overlay = document.getElementById('reasonSelectOverlay');
   if (overlay) overlay.style.display = 'none';
 }
 
@@ -1438,8 +1550,9 @@ function checkSmileLiveness(landmarks) {
  * Memproses Pengiriman Data Kehadiran (Online / Masuk Antrean Offline)
  * @param {string} attendanceType - "CLOCK_IN" | "START_BREAK" | "STOP_BREAK" | "CLOCK_OUT"
  * @param {string} selectedWorkingHour - Opsi Jam Kerja dari Outlet Schedule (contoh: "08:00 - 17:00")
+ * @param {string} selectedReason - Kategori / Alasan Absen (contoh: "Izin Terlambat", "Lupa Absen", "Pulang Awal")
  */
-function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "") {
+function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "", selectedReason = "") {
   const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
   const challengeText = document.getElementById('challengeText');
 
@@ -1539,11 +1652,13 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "")
     else if (attendanceType === "CLOCK_OUT") typeLabel = "Clock Out";
 
     const reasonSelect = document.getElementById("attendanceReasonSelect");
-    const selectedReason = reasonSelect ? reasonSelect.value.trim() : "";
+    const activeReason = (typeof selectedReason === 'string' && selectedReason !== '')
+      ? selectedReason
+      : (reasonSelect ? reasonSelect.value.trim() : "");
 
     let approvalTag = "";
-    if (selectedReason) {
-      approvalTag = " [Supervisor Approval Required | " + selectedReason + "]";
+    if (activeReason) {
+      approvalTag = " [Supervisor Approval Required | " + activeReason + "]";
     }
 
     const payload = {
