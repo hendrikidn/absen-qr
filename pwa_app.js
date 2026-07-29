@@ -2168,3 +2168,94 @@ function showSyncResult(message, type) {
     resultDiv.style.display = 'block';
   }
 }
+
+function openUnbindOverlay(prefillNRP) {
+  const overlay = document.getElementById('unbindDeviceOverlay');
+  const inputNrp = document.getElementById('unbindNRP');
+  const resultDiv = document.getElementById('unbindResult');
+  
+  if (resultDiv) resultDiv.style.display = 'none';
+  
+  if (prefillNRP && inputNrp) {
+    inputNrp.value = prefillNRP;
+  } else if (inputNrp && !inputNrp.value) {
+    const savedNrp = localStorage.getItem('attendance_registered_nrp');
+    if (savedNrp) inputNrp.value = savedNrp;
+  }
+  
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function closeUnbindOverlay() {
+  const overlay = document.getElementById('unbindDeviceOverlay');
+  const resultDiv = document.getElementById('unbindResult');
+  const btn = document.getElementById('btnSendUnbind');
+  
+  if (overlay) overlay.style.display = 'none';
+  if (resultDiv) resultDiv.style.display = 'none';
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '🚀 Kirim Permintaan Unbind';
+    btn.style.display = 'block';
+  }
+}
+
+async function sendUnbindDeviceRequest(btnElement) {
+  const inputNrp = document.getElementById('unbindNRP');
+  const selectReason = document.getElementById('unbindReason');
+  
+  const nrp = inputNrp ? inputNrp.value.trim() : '';
+  const reason = selectReason ? selectReason.value : 'Ganti HP Baru';
+  const deviceId = getOrCreateDeviceId();
+  
+  if (!nrp) {
+    showUnbindResult("❌ NRP wajib diisi.", "error");
+    return;
+  }
+  
+  if (btnElement) {
+    btnElement.disabled = true;
+    btnElement.innerHTML = '⏳ Mengirim Permintaan...';
+  }
+  
+  try {
+    const payload = {
+      action: "request_unbind_device",
+      nrp: nrp,
+      reason: reason,
+      device_id: deviceId
+    };
+    
+    const response = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    });
+    
+    const data = await response.json();
+    if (data.status === "success") {
+      showUnbindResult("✅ " + data.message, "success");
+      localStorage.removeItem('attendance_registered_device_id');
+      localStorage.removeItem('attendance_registered_nrp');
+      setTimeout(() => {
+        closeUnbindOverlay();
+      }, 3500);
+    } else {
+      showUnbindResult("❌ Ditolak Server: " + (data.message || "Gagal mengirim permintaan."), "error");
+      if (btnElement) btnElement.disabled = false;
+    }
+  } catch (err) {
+    console.error("Error sending unbind request:", err);
+    showUnbindResult("❌ Gagal terhubung ke server cloud: " + (err.message || err.toString()), "error");
+    if (btnElement) btnElement.disabled = false;
+  }
+}
+
+function showUnbindResult(message, type) {
+  const resultDiv = document.getElementById('unbindResult');
+  if (resultDiv) {
+    resultDiv.innerHTML = message;
+    resultDiv.className = "feedback-message " + (type === 'success' ? 'feedback-success' : 'feedback-error');
+    resultDiv.style.display = 'block';
+  }
+}

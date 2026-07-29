@@ -772,8 +772,42 @@
         style="margin-bottom: 10px; border-color: rgba(99, 102, 241, 0.4); color: var(--text-main);">
         📝 Belum Terdaftar? Ke Tab Registrasi
       </button>
+      <button type="button" class="btn btn-secondary" onclick="openUnbindOverlay()"
+        style="margin-bottom: 10px; border-color: rgba(239, 68, 68, 0.4); color: #ef4444;">
+        📱 Ganti HP Baru? Minta Reset Device
+      </button>
       <button class="btn btn-secondary" onclick="closeSyncOverlay()">Batal</button>
       <div id="syncResult" class="feedback-message" style="margin-top: 10px;"></div>
+    </div>
+  </div>
+
+  <!-- Unbind Device Request Modal (Minta Unbind / Reset Device HP Baru) -->
+  <div class="overlay" id="unbindDeviceOverlay" style="display: none;">
+    <div class="modal-card">
+      <h2 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 10px; text-align: center; color: var(--text-main);">
+        📱 Permintaan Unbind Device
+      </h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 18px;">
+        Ganti HP baru atau perangkat terikat? Masukkan NRP Anda untuk mengajukan reset perangkat ke HR Admin.
+      </p>
+      <div class="form-group">
+        <label for="unbindNRP">Nomor Registrasi Pegawai (NRP)</label>
+        <input type="text" id="unbindNRP" placeholder="Contoh: SNI*******">
+      </div>
+      <div class="form-group">
+        <label for="unbindReason">Alasan Pengajuan</label>
+        <select id="unbindReason" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color);">
+          <option value="Ganti HP / Smartphone Baru">Ganti HP / Smartphone Baru</option>
+          <option value="Perangkat HP Rusak / Hilang">Perangkat HP Rusak / Hilang</option>
+          <option value="Device ID Reset / Re-install PWA">Device ID Reset / Re-install PWA</option>
+          <option value="Lainnya">Lainnya</option>
+        </select>
+      </div>
+      <button id="btnSendUnbind" class="btn" onclick="sendUnbindDeviceRequest(this)" style="margin-bottom: 10px; background: #ef4444; color: white;">
+        🚀 Kirim Permintaan Unbind
+      </button>
+      <button class="btn btn-secondary" onclick="closeUnbindOverlay()">Batal</button>
+      <div id="unbindResult" class="feedback-message" style="margin-top: 10px;"></div>
     </div>
   </div>
 
