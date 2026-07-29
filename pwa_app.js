@@ -29,6 +29,17 @@ let livenessPassed = false;
 let faceVerified = false;
 let baselineSmileRatio = null;
 
+/**
+ * Helper untuk mendapatkan tanggal lokal (YYYY-MM-DD) sesuai zona waktu pengguna (bukan UTC)
+ */
+function getTodayDateStr() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // =========================================================================
 // DEBUG HELPERS
 // =========================================================================
@@ -614,7 +625,7 @@ async function fetchOutletShifts(outletName) {
  */
 async function handleClockInClick() {
   const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
-  const todayDateStr = new Date().toISOString().split('T')[0];
+  const todayDateStr = getTodayDateStr();
   const localStatusKey = 'attendance_status_' + localNRP + '_' + todayDateStr;
   let localStatus = {};
   try {
@@ -1451,7 +1462,7 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "")
   }
 
   // Pre-validasi aturan absensi secara lokal
-  const todayDateStr = new Date().toISOString().split('T')[0];
+  const todayDateStr = getTodayDateStr();
   const localStatusKey = 'attendance_status_' + localNRP + '_' + todayDateStr;
   let localStatus = {};
   try {
@@ -1586,7 +1597,7 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "")
  */
 function saveLocalAttendanceStatus(nrp, attendanceType) {
   try {
-    const todayDateStr = new Date().toISOString().split('T')[0];
+    const todayDateStr = getTodayDateStr();
     const key = 'attendance_status_' + nrp + '_' + todayDateStr;
     const current = JSON.parse(localStorage.getItem(key) || '{}');
     localStorage.setItem(key, JSON.stringify({
