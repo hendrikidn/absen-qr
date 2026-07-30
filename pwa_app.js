@@ -2585,7 +2585,7 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       if (spvHeaderBtn) spvHeaderBtn.style.display = 'inline-flex';
       if (spvHeaderBadge) spvHeaderBadge.innerText = cachedSupervisorPending.length;
 
-      if (banner) banner.style.display = 'block';
+      if (banner) banner.style.display = 'none';
       if (badge) badge.innerText = cachedSupervisorPending.length + " Pengajuan";
       if (spvText) spvText.innerText = "Panel Supervisor";
 
