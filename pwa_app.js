@@ -142,11 +142,11 @@ function dbgLog(msg) {
  */
 function getOrCreateDeviceId() {
   let deviceId = localStorage.getItem('attendance_device_id');
-  if (deviceId && deviceId.startsWith('DEV-FP-')) {
+  if (deviceId && (deviceId.startsWith('DEV-FP-') || deviceId.startsWith('DEV-ID-'))) {
     return deviceId;
   }
 
-  // Buat Hardware Fingerprint konstan berdasarkan spesifikasi fisik HP
+  // Buat Device ID Unik yang Mengombinasikan Hardware Fingerprint + UUID Persisten Browser
   try {
     const fpData = [
       navigator.userAgent || '',
@@ -159,10 +159,15 @@ function getOrCreateDeviceId() {
     ].join('||');
 
     const hash = fnv1aHash(fpData);
-    deviceId = 'DEV-FP-' + hash;
+    const uniqueSuffix = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID().substring(0, 8).toUpperCase()
+      : Math.random().toString(36).substring(2, 10).toUpperCase();
+
+    deviceId = 'DEV-ID-' + hash + '-' + uniqueSuffix;
   } catch (e) {
     // Fallback jika terjadi kesalahan saat fingerprinting
-    deviceId = 'DEV-FP-' + Math.abs(fnv1aHash(navigator.userAgent || 'fallback')).toString(16).toUpperCase().padStart(8, '0');
+    const fallbackUUID = Math.random().toString(36).substring(2, 10).toUpperCase();
+    deviceId = 'DEV-ID-' + Math.abs(fnv1aHash(navigator.userAgent || 'fallback')).toString(16).toUpperCase().padStart(8, '0') + '-' + fallbackUUID;
   }
 
   try {
@@ -1697,17 +1702,18 @@ function checkSmileLiveness(landmarks) {
   // Persentase pelebaran bibir dibanding baseline netral
   const ratioIncrease = (currentSmileRatio - baselineSmileRatio) / baselineSmileRatio;
 
-  // Deteksi senyum valid: pelebaran bibir setidaknya 12% dari baseline netral
+  // Deteksi senyum dinamis valid: pelebaran bibir setidaknya 12% dibanding baseline netral & rasio absolut > 0.50
   const isSmiling = ratioIncrease >= 0.12 && currentSmileRatio > 0.50;
 
   if (isSmiling) {
     smileFrameCount++;
   } else {
+    // Jika senyuman menghilang saat belum mencapai ambang batas, kurangi hitungan secara bertahap
     smileFrameCount = Math.max(0, smileFrameCount - 1);
   }
 
-  // Wajib tersenyum nyata secara stabil minimal 3 frame berturut-turut
-  return smileFrameCount >= 3;
+  // Wajib tersenyum nyata secara dinamis & stabil minimal 4 frame berturut-turut
+  return smileFrameCount >= 4;
 }
 
 /**
@@ -2038,6 +2044,9 @@ function enqueueOfflineRecord(payload) {
   if (existingQueue) {
     queue = JSON.parse(existingQueue);
   }
+
+  // Tag payload dengan flag khusus antrean offline untuk diproses dengan grace window oleh server GAS
+  payload.is_offline_queued = true;
 
   // Hindari duplikasi antrean yang sama persis (NRP + timestamp)
   const isDuplicate = queue.some(item => item.nrp === payload.nrp && item.timestamp === payload.timestamp);
