@@ -213,7 +213,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupNetworkMonitoring();
   loadLocalRegistration();
   updateOfflineBadge();
-  checkSupervisorRole(false);
+  identifyDeviceUser();
   await loadFaceApiModels();
 
   // Cek jika halaman dibuka dari scan kamera bawaan HP (parameter URL)
@@ -603,6 +603,12 @@ function showScanStep3() {
     btn.style.opacity = '1';
     btn.style.pointerEvents = 'auto';
   });
+
+  // Check supervisor role for the active user NRP
+  const localNRP = localStorage.getItem('attendance_registered_nrp');
+  if (localNRP) {
+    checkSupervisorRoleForNRP(localNRP, false);
+  }
 }
 
 /**
@@ -2468,17 +2474,95 @@ function showUnbindResult(message, type) {
 
 let cachedSupervisorPending = [];
 let isSupervisorRole = false;
+let currentUserProfile = null;
 
 /**
- * Memeriksa Peran Supervisor Pengguna berdasarkan NRP tersimpan di LocalStorage
- * Menggunakan kolom 'Posisi Update' di tab MP Database yang mengandung 'SVP', 'SUPERVISOR', atau 'SPV'
+ * Mengenali pengguna perangkat berdasarkan Device ID dan/atau NRP lokal tersimpan
  */
-async function checkSupervisorRole(showToast = false) {
-  const localNRP = localStorage.getItem('attendance_registered_nrp');
-  if (!localNRP) return;
+async function identifyDeviceUser() {
+  const deviceId = getOrCreateDeviceId();
+  const localNRP = localStorage.getItem('attendance_registered_nrp') || '';
+
+  if (!deviceId && !localNRP) return;
 
   try {
-    const response = await fetch(GAS_URL + "?action=get_supervisor_pending&nrp=" + encodeURIComponent(localNRP));
+    const url = `${GAS_URL}?action=get_user_by_device_id&device_id=${encodeURIComponent(deviceId)}&nrp=${encodeURIComponent(localNRP)}`;
+    const response = await fetch(url);
+    const resData = await response.json();
+
+    if (resData && resData.status === 'success' && resData.found) {
+      currentUserProfile = resData;
+
+      if (resData.nrp) {
+        localStorage.setItem('attendance_registered_nrp', resData.nrp);
+      }
+
+      const banner = document.getElementById('userHeaderBanner');
+      const nameEl = document.getElementById('userNameText');
+      const nrpEl = document.getElementById('userNrpVal');
+      const outletEl = document.getElementById('userOutletVal');
+      const roleBadge = document.getElementById('userRoleBadge');
+
+      if (banner) banner.style.display = 'block';
+      if (nameEl) nameEl.innerText = `👋 Halo, ${resData.name}`;
+      if (nrpEl) nrpEl.innerText = resData.nrp || '-';
+      if (outletEl) outletEl.innerText = resData.outlet || 'Pusat';
+
+      if (roleBadge) {
+        if (resData.is_supervisor) {
+          roleBadge.innerText = 'Supervisor';
+          roleBadge.style.background = 'rgba(99, 102, 241, 0.25)';
+          roleBadge.style.color = '#818cf8';
+          roleBadge.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+        } else {
+          roleBadge.innerText = 'Staff';
+          roleBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+          roleBadge.style.color = '#34d399';
+          roleBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+        }
+      }
+
+      if (resData.is_supervisor) {
+        checkSupervisorRoleForNRP(resData.nrp, false);
+      }
+    } else if (localNRP) {
+      const banner = document.getElementById('userHeaderBanner');
+      const nameEl = document.getElementById('userNameText');
+      const nrpEl = document.getElementById('userNrpVal');
+
+      if (banner) banner.style.display = 'block';
+      if (nameEl) nameEl.innerText = `👋 Akun Perangkat`;
+      if (nrpEl) nrpEl.innerText = localNRP;
+      checkSupervisorRoleForNRP(localNRP, false);
+    }
+  } catch (err) {
+    console.warn("Gagal mengidentifikasi user berdasarkan Device ID:", err);
+  }
+}
+
+/**
+ * Meminta masukan NRP Supervisor secara manual jika perangkat belum terdaftar
+ */
+function promptSupervisorNRP() {
+  const currentNRP = localStorage.getItem('attendance_registered_nrp') || 'SNI250042';
+  const inputNRP = prompt("Masukkan NRP Supervisor Anda (Contoh: SNI250042):", currentNRP);
+  if (inputNRP && inputNRP.trim()) {
+    const cleanNRP = inputNRP.trim();
+    localStorage.setItem('attendance_registered_nrp', cleanNRP);
+    checkSupervisorRoleForNRP(cleanNRP, true).then(() => {
+      openSupervisorOverlay();
+    });
+  }
+}
+
+/**
+ * Memeriksa Peran Supervisor untuk NRP tertentu
+ */
+async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
+  if (!targetNRP) return;
+
+  try {
+    const response = await fetch(GAS_URL + "?action=get_supervisor_pending&nrp=" + encodeURIComponent(targetNRP));
     const resData = await response.json();
 
     if (resData && resData.status === "success" && resData.is_supervisor) {
@@ -2491,19 +2575,40 @@ async function checkSupervisorRole(showToast = false) {
 
       if (banner) banner.style.display = 'block';
       if (badge) badge.innerText = cachedSupervisorPending.length + " Pengajuan";
-      if (spvText) spvText.innerText = "Panel Supervisor (" + (resData.supervisor_name || localNRP) + ")";
+      if (spvText) spvText.innerText = "Panel Supervisor (" + (resData.supervisor_name || targetNRP) + ")";
+
+      const spvStep3Opt = document.getElementById('spvStep3Option');
+      const spvStep3Badge = document.getElementById('spvStep3Badge');
+      if (spvStep3Opt) spvStep3Opt.style.display = 'block';
+      if (spvStep3Badge) spvStep3Badge.innerText = cachedSupervisorPending.length;
 
       if (showToast) {
-        showScanResult("✅ Data pengajuan supervisor diperbarui: " + cachedSupervisorPending.length + " antrean", "info");
+        showScanResult("✅ Akses Supervisor Aktif (" + (resData.supervisor_name || targetNRP) + "): " + cachedSupervisorPending.length + " antrean", "info");
       }
       renderSupervisorPendingList(resData);
     } else {
       isSupervisorRole = false;
       const banner = document.getElementById('supervisorBanner');
       if (banner) banner.style.display = 'none';
+      const spvStep3Opt = document.getElementById('spvStep3Option');
+      if (spvStep3Opt) spvStep3Opt.style.display = 'none';
+
+      if (showToast) {
+        alert("⚠️ NRP '" + targetNRP + "' tidak terdeteksi sebagai Supervisor di MP Database (atau pastikan Google Apps Script sudah di-deploy ulang).");
+      }
     }
   } catch (err) {
     console.warn("Gagal mengecek peran Supervisor dari GAS:", err);
+  }
+}
+
+/**
+ * Memeriksa Peran Supervisor Pengguna berdasarkan NRP tersimpan di LocalStorage
+ */
+async function checkSupervisorRole(showToast = false) {
+  const localNRP = localStorage.getItem('attendance_registered_nrp');
+  if (localNRP) {
+    await checkSupervisorRoleForNRP(localNRP, showToast);
   }
 }
 
