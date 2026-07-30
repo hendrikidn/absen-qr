@@ -1835,6 +1835,30 @@ function saveLocalAttendanceStatus(nrp, attendanceType, workingHour = "") {
 }
 
 /**
+ * Menyimpan status absensi cloud hari ini ke localStorage pengguna
+ */
+function saveTodayAttendanceStatus(nrp, statusObj) {
+  if (!nrp) return;
+  try {
+    const todayDateStr = getTodayDateStr();
+    const key = 'attendance_status_' + nrp + '_' + todayDateStr;
+    const current = JSON.parse(localStorage.getItem(key) || '{}');
+    
+    const updated = {
+      ...current,
+      hasClockIn: (typeof statusObj.hasClockIn === 'boolean') ? statusObj.hasClockIn : (current.hasClockIn || false),
+      hasClockOut: (typeof statusObj.hasClockOut === 'boolean') ? statusObj.hasClockOut : (current.hasClockOut || false),
+      lastType: statusObj.lastType || current.lastType || (statusObj.hasClockIn ? 'CLOCK_IN' : null),
+      lastTime: statusObj.lastTime || current.lastTime || new Date().toISOString()
+    };
+    
+    localStorage.setItem(key, JSON.stringify(updated));
+  } catch (e) {
+    console.warn("Gagal menyimpan status absensi hari ini:", e);
+  }
+}
+
+/**
  * Mengirim data langsung ke Google Apps Script Web App
  */
 async function sendToGAS(payload) {
@@ -1863,8 +1887,17 @@ async function sendToGAS(payload) {
       console.warn("GAS menolak absensi:", resData.message);
       if (challengeText) challengeText.innerText = "❌ Gagal: " + resData.message;
 
+      const msgLower = (resData.message || "").toLowerCase();
+
+      // Memecahkan kebuntuan/deadlock jika cache browser sempat dihapus:
+      if (msgLower.includes("sudah") && (msgLower.includes("clock in") || msgLower.includes("masuk kerja"))) {
+        saveLocalAttendanceStatus(payload.nrp, "CLOCK_IN", payload.working_hour || "");
+      }
+
       let extraTip = "";
-      if (resData.message && (resData.message.toLowerCase().includes("perangkat") || resData.message.toLowerCase().includes("device"))) {
+      if (msgLower.includes("sudah") && (msgLower.includes("clock in") || msgLower.includes("masuk kerja"))) {
+        extraTip = "<br><br><span style='font-size:0.85rem; color:#60a5fa;'>💡 <strong>Status lokal diperbarui:</strong> Anda terdeteksi sudah melakukan Clock In di Cloud hari ini. Silakan pilih menu <strong>Pulang Kerja</strong> atau <strong>Istirahat</strong>.</span>";
+      } else if (msgLower.includes("perangkat") || msgLower.includes("device")) {
         extraTip = "<br><br><span style='font-size:0.8rem; color:#cbd5e1;'>💡 <strong>Solusi:</strong> Karena data browser pernah dihapus, silakan buka tab <strong>Registrasi</strong> dan lakukan <strong>Mulai Registrasi (Ambil Foto)</strong> untuk memperbarui Perangkat Resmi HP ini di server.</span>";
       }
 
