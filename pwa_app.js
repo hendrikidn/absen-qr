@@ -213,6 +213,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupNetworkMonitoring();
   loadLocalRegistration();
   updateOfflineBadge();
+  checkSupervisorRole(false);
   await loadFaceApiModels();
 
   // Cek jika halaman dibuka dari scan kamera bawaan HP (parameter URL)
@@ -2458,5 +2459,176 @@ function showUnbindResult(message, type) {
     resultDiv.innerHTML = message;
     resultDiv.className = "feedback-message " + (type === 'success' ? 'feedback-success' : 'feedback-error');
     resultDiv.style.display = 'block';
+  }
+}
+
+/* ==========================================================================
+   FUNGSI SUPERVISOR APPROVAL (OPSI 1: PWA MOBILE SPV MODE)
+   ========================================================================== */
+
+let cachedSupervisorPending = [];
+let isSupervisorRole = false;
+
+/**
+ * Memeriksa Peran Supervisor Pengguna berdasarkan NRP tersimpan di LocalStorage
+ * Menggunakan kolom 'Posisi Update' di tab MP Database yang mengandung 'SVP', 'SUPERVISOR', atau 'SPV'
+ */
+async function checkSupervisorRole(showToast = false) {
+  const localNRP = localStorage.getItem('attendance_registered_nrp');
+  if (!localNRP) return;
+
+  try {
+    const response = await fetch(GAS_URL + "?action=get_supervisor_pending&nrp=" + encodeURIComponent(localNRP));
+    const resData = await response.json();
+
+    if (resData && resData.status === "success" && resData.is_supervisor) {
+      isSupervisorRole = true;
+      cachedSupervisorPending = resData.pending_requests || [];
+
+      const banner = document.getElementById('supervisorBanner');
+      const badge = document.getElementById('spvBadgeCount');
+      const spvText = document.getElementById('spvBannerText');
+
+      if (banner) banner.style.display = 'block';
+      if (badge) badge.innerText = cachedSupervisorPending.length + " Pengajuan";
+      if (spvText) spvText.innerText = "Panel Supervisor (" + (resData.supervisor_name || localNRP) + ")";
+
+      if (showToast) {
+        showScanResult("✅ Data pengajuan supervisor diperbarui: " + cachedSupervisorPending.length + " antrean", "info");
+      }
+      renderSupervisorPendingList(resData);
+    } else {
+      isSupervisorRole = false;
+      const banner = document.getElementById('supervisorBanner');
+      if (banner) banner.style.display = 'none';
+    }
+  } catch (err) {
+    console.warn("Gagal mengecek peran Supervisor dari GAS:", err);
+  }
+}
+
+/**
+ * Render daftar kartu pengajuan persetujuan di modal supervisor
+ */
+function renderSupervisorPendingList(data) {
+  const container = document.getElementById('spvPendingListContainer');
+  const sub = document.getElementById('spvModalSubtitle');
+  if (!container) return;
+
+  const requests = data.pending_requests || cachedSupervisorPending || [];
+  const spvName = data.supervisor_name || "Supervisor";
+  const spvOutlet = data.supervisor_outlet || "Semua Area";
+
+  if (sub) {
+    sub.innerText = `Supervisor: ${spvName} | Area: ${spvOutlet}`;
+  }
+
+  container.innerHTML = '';
+
+  if (requests.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 24px 12px; color: var(--text-muted); font-size: 0.9rem;">
+        ✅ Tidak ada pengajuan perizinan absensi yang menunggu persetujuan saat ini.
+      </div>
+    `;
+    return;
+  }
+
+  requests.forEach((item, index) => {
+    const card = document.createElement('div');
+    card.style.cssText = 'background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; text-align: left;';
+
+    let badgeColor = "#3b82f6";
+    let displayReason = item.reason || 'Perizinan';
+
+    if (item.reason === "Izin Terlambat") {
+      badgeColor = "#f59e0b";
+    } else if (item.reason === "Pulang Awal") {
+      badgeColor = "#ef4444";
+    } else if (item.reason === "Lupa Absen") {
+      badgeColor = "#8b5cf6";
+    } else if (item.reason.indexOf("Exceeded") !== -1 || item.reason.indexOf("HK") !== -1) {
+      badgeColor = "#ec4899";
+      displayReason = "🚨 Melebihi HK (" + item.reason.replace('Exceeded Monthly HK ', '') + ")";
+    }
+
+    card.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <div style="font-weight: 700; font-size: 0.95rem; color: #f8fafc;">${item.employee_name || 'Karyawan'}</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">NRP: ${item.nrp} | Outlet: ${item.outlet || '-'}</div>
+        </div>
+        <span style="background: ${badgeColor}; color: white; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 6px;">${displayReason}</span>
+      </div>
+      <div style="font-size: 0.8rem; color: #cbd5e1;">
+        🕒 <strong>Waktu:</strong> ${item.date} ${item.time} (${item.type})
+      </div>
+      <div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">
+        ${item.notes || ''}
+      </div>
+      <div style="display: flex; gap: 8px; margin-top: 4px;" id="spvActions_${index}">
+        <button class="btn" onclick="handleSupervisorDecision('${item.nrp}', '${item.timestamp}', 'APPROVED', ${index})" style="flex: 1; background: #10b981; color: white; padding: 8px 10px; font-size: 0.8rem; font-weight: 600;">
+          🟢 Setujui
+        </button>
+        <button class="btn" onclick="handleSupervisorDecision('${item.nrp}', '${item.timestamp}', 'REJECTED', ${index})" style="flex: 1; background: #ef4444; color: white; padding: 8px 10px; font-size: 0.8rem; font-weight: 600;">
+          🔴 Tolak
+        </button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function openSupervisorOverlay() {
+  const overlay = document.getElementById('supervisorApprovalOverlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+    checkSupervisorRole(false);
+  }
+}
+
+function closeSupervisorOverlay() {
+  const overlay = document.getElementById('supervisorApprovalOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+/**
+ * Mengirim Keputusan Supervisor (APPROVED / REJECTED) ke GAS Server Cloud
+ */
+async function handleSupervisorDecision(targetNrp, targetTimestamp, decision, cardIndex) {
+  const localNRP = localStorage.getItem('attendance_registered_nrp');
+  if (!localNRP) return;
+
+  const actionsDiv = document.getElementById('spvActions_' + cardIndex);
+  if (actionsDiv) {
+    actionsDiv.innerHTML = `<span style="font-size:0.8rem; color:var(--text-muted);">⏳ Memproses persetujuan...</span>`;
+  }
+
+  const payload = {
+    action: "update_approval_status",
+    supervisor_nrp: localNRP,
+    target_nrp: targetNrp,
+    target_timestamp: targetTimestamp,
+    decision: decision
+  };
+
+  try {
+    const response = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    });
+    const resData = await response.json();
+
+    if (resData && resData.status === "success") {
+      showScanResult("✅ " + resData.message, "success");
+      await checkSupervisorRole(false);
+    } else {
+      showScanResult("❌ Gagal: " + (resData ? resData.message : "Terjadi kesalahan"), "error");
+      await checkSupervisorRole(false);
+    }
+  } catch (err) {
+    console.error("Gagal mengirim persetujuan supervisor:", err);
+    showScanResult("❌ Gagal terhubung ke server", "error");
   }
 }
