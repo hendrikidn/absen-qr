@@ -270,13 +270,18 @@ function setupNetworkMonitoring() {
 
   function updateStatus() {
     if (navigator.onLine) {
-      statusBanner.className = "status-banner online";
-      statusText.innerText = "Mode Online";
-      // Coba sinkronisasi jika ada antrean offline
+      if (statusBanner) {
+        statusBanner.className = "status-banner online";
+        statusBanner.title = "Koneksi Cloud Online";
+      }
+      if (statusText) statusText.innerText = "Online";
       syncOfflineQueue();
     } else {
-      statusBanner.className = "status-banner offline";
-      statusText.innerText = "Mode Offline - Absen Tersimpan Lokal";
+      if (statusBanner) {
+        statusBanner.className = "status-banner offline";
+        statusBanner.title = "Offline - Absen disinkronisasi saat online";
+      }
+      if (statusText) statusText.innerText = "Offline";
     }
   }
 
@@ -2519,21 +2524,28 @@ async function identifyDeviceUser() {
       if (outletEl) outletEl.innerText = userInfo.outlet || '-';
 
       if (roleBadge) {
+        roleBadge.innerText = userInfo.position || (userInfo.is_supervisor ? 'Supervisor' : 'Staff');
         if (userInfo.is_supervisor) {
-          roleBadge.innerText = 'Supervisor';
           roleBadge.style.background = 'rgba(99, 102, 241, 0.25)';
           roleBadge.style.color = '#818cf8';
           roleBadge.style.borderColor = 'rgba(99, 102, 241, 0.4)';
         } else {
-          roleBadge.innerText = userInfo.position || 'Staff';
           roleBadge.style.background = 'rgba(16, 185, 129, 0.2)';
           roleBadge.style.color = '#34d399';
           roleBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
         }
       }
 
+      const spvManualBtn = document.getElementById('spvManualAccess');
       if (userInfo.is_supervisor) {
+        if (spvManualBtn) spvManualBtn.style.display = 'block';
         checkSupervisorRoleForNRP(userInfo.nrp, false);
+      } else {
+        if (spvManualBtn) spvManualBtn.style.display = 'none';
+        const banner = document.getElementById('supervisorBanner');
+        if (banner) banner.style.display = 'none';
+        const spvStep3Opt = document.getElementById('spvStep3Option');
+        if (spvStep3Opt) spvStep3Opt.style.display = 'none';
       }
     } else if (localNRP) {
       const banner = document.getElementById('userHeaderBanner');
@@ -2596,8 +2608,15 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       const banner = document.getElementById('supervisorBanner');
       const badge = document.getElementById('spvBadgeCount');
       const spvText = document.getElementById('spvBannerText');
+      const spvManualBtn = document.getElementById('spvManualAccess');
+      const spvHeaderBtn = document.getElementById('spvHeaderBtn');
+      const spvHeaderBadge = document.getElementById('spvHeaderBadge');
+
+      if (spvHeaderBtn) spvHeaderBtn.style.display = 'inline-flex';
+      if (spvHeaderBadge) spvHeaderBadge.innerText = cachedSupervisorPending.length;
 
       if (banner) banner.style.display = 'block';
+      if (spvManualBtn) spvManualBtn.style.display = 'block';
       if (badge) badge.innerText = cachedSupervisorPending.length + " Pengajuan";
       if (spvText) spvText.innerText = "Panel Supervisor (" + spvName + ")";
 
@@ -2614,11 +2633,15 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       isSupervisorRole = false;
       const banner = document.getElementById('supervisorBanner');
       if (banner) banner.style.display = 'none';
+      const spvManualBtn = document.getElementById('spvManualAccess');
+      if (spvManualBtn) spvManualBtn.style.display = 'none';
+      const spvHeaderBtn = document.getElementById('spvHeaderBtn');
+      if (spvHeaderBtn) spvHeaderBtn.style.display = 'none';
       const spvStep3Opt = document.getElementById('spvStep3Option');
       if (spvStep3Opt) spvStep3Opt.style.display = 'none';
 
       if (showToast) {
-        alert("⚠️ NRP '" + targetNRP + "' tidak terdeteksi sebagai Supervisor di MP Database (atau pastikan Google Apps Script sudah di-deploy ulang).");
+        alert("⚠️ NRP '" + targetNRP + "' tidak terdeteksi sebagai Supervisor di MP Database.");
       }
     }
   } catch (err) {

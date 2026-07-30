@@ -5,7 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Smart Attendance PWA</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📱</text></svg>">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📱</text></svg>">
 
   <!-- Google Fonts & Tailwind-like CSS variables -->
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -378,30 +379,45 @@
 
     /* Statuses and Alerts */
     .status-banner {
-      width: 100%;
-      max-width: 480px;
-      border-radius: 12px;
-      padding: 12px 16px;
-      margin-bottom: 16px;
-      font-size: 0.85rem;
-      display: none;
+      display: inline-flex;
       align-items: center;
-      gap: 10px;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 600;
       animation: fadeIn 0.3s ease;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     }
 
     .status-banner.offline {
-      display: flex;
-      background: rgba(245, 158, 11, 0.15);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-      color: #f59e0b;
+      background: rgba(245, 158, 11, 0.18);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #fbbf24;
     }
 
     .status-banner.online {
-      display: flex;
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid rgba(16, 185, 129, 0.3);
+      background: rgba(16, 185, 129, 0.18);
+      border: 1px solid rgba(16, 185, 129, 0.35);
       color: #34d399;
+    }
+
+    .status-banner .indicator {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .status-banner.online .indicator {
+      background: #10b981;
+      box-shadow: 0 0 6px #10b981;
+    }
+
+    .status-banner.offline .indicator {
+      background: #f59e0b;
+      box-shadow: 0 0 6px #f59e0b;
     }
 
     .feedback-message {
@@ -638,25 +654,35 @@
     </p>
   </div>
 
-  <header>
+  <header style="position: relative; padding: 12px 16px 6px 16px;">
+    <div style="position: absolute; right: 16px; top: 12px;">
+      <div id="statusBanner" class="status-banner online" title="Status Jaringan Server Cloud">
+        <span class="indicator"></span>
+        <span id="statusText">Online</span>
+      </div>
+    </div>
     <h1>Smart Attendance</h1>
     <p>Sistem Absensi QR Code & Verifikasi Wajah</p>
   </header>
 
-  <!-- Network status banner -->
-  <div id="statusBanner" class="status-banner online">
-    <span class="indicator" style="width: 8px; height: 8px; border-radius: 50%; background: currentColor;"></span>
-    <span id="statusText">Mode Online</span>
-  </div>
-
   <!-- User Profile Header Banner (Auto-Identified by Device ID) -->
-  <div id="userHeaderBanner" style="display: none; margin: 10px 16px 0 16px; background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 12px 16px; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+  <div id="userHeaderBanner"
+    style="display: none; margin: 10px 16px 0 16px; background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 12px 16px; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
     <div style="display: flex; justify-content: space-between; align-items: center;">
       <div>
-        <div style="font-size: 0.72rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">📱 Akun Terdaftar Perangkat</div>
-        <div style="font-size: 1.05rem; font-weight: 700; color: #f8fafc; margin-top: 2px;" id="userNameText">👋 Loading...</div>
+        <div style="font-size: 1.05rem; font-weight: 700; color: #f8fafc; margin-top: 2px;" id="userNameText">👋
+          Loading...</div>
       </div>
-      <span id="userRoleBadge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 99px;">Staff</span>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span id="userRoleBadge"
+          style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 99px;">Staff</span>
+        <button type="button" id="spvHeaderBtn" onclick="openSupervisorOverlay()"
+          style="display: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; font-size: 0.75rem; font-weight: 700; padding: 5px 12px; align-items: center; gap: 6px; box-shadow: 0 3px 10px rgba(99,102,241,0.4); cursor: pointer;">
+          <span>📋 Approval</span>
+          <span id="spvHeaderBadge"
+            style="background: #ef4444; color: white; font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 99px;">0</span>
+        </button>
+      </div>
     </div>
     <div style="font-size: 0.78rem; color: #cbd5e1; margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap;">
       <span>NRP: <strong id="userNrpVal">-</strong></span>
@@ -665,18 +691,22 @@
     </div>
   </div>
 
-  <!-- Supervisor Quick Banner (Hanya muncul jika user merupakan Supervisor) -->
+  <!-- Supervisor Quick Banner (Legacy/Fallback) -->
   <div id="supervisorBanner" style="display: none; margin: 10px 16px 0 16px;">
-    <button type="button" class="btn" onclick="openSupervisorOverlay()" style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; width: 100%; border-radius: 12px; font-weight: 700; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);">
+    <button type="button" class="btn" onclick="openSupervisorOverlay()"
+      style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; width: 100%; border-radius: 12px; font-weight: 700; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);">
       <span style="display: flex; align-items: center; gap: 8px;">
         <span style="font-size: 1.1rem;">📋</span>
         <span id="spvBannerText">Panel Supervisor</span>
       </span>
-      <span id="spvBadgeCount" style="background: #ef4444; color: white; font-size: 0.8rem; font-weight: 700; padding: 2px 10px; border-radius: 99px;">0 Pengajuan</span>
+      <span id="spvBadgeCount"
+        style="background: #ef4444; color: white; font-size: 0.8rem; font-weight: 700; padding: 2px 10px; border-radius: 99px;">0
+        Pengajuan</span>
     </button>
   </div>
-  <div id="spvManualAccess" style="margin: 6px 16px 0 16px; text-align: right;">
-    <button type="button" onclick="promptSupervisorNRP()" style="background: none; border: none; color: #818cf8; font-size: 0.78rem; text-decoration: underline; cursor: pointer; font-weight: 600;">
+  <div id="spvManualAccess" style="display: none; margin: 6px 16px 0 16px; text-align: right;">
+    <button type="button" onclick="promptSupervisorNRP()"
+      style="background: none; border: none; color: #818cf8; font-size: 0.78rem; text-decoration: underline; cursor: pointer; font-weight: 600;">
       🔑 Akses Panel Supervisor (Input NRP)
     </button>
   </div>
@@ -749,47 +779,49 @@
 
         <!-- Tombol khusus jika Karyawan yang melakukan Absen adalah Supervisor -->
         <div id="spvStep3Option" style="display: none; margin-top: 12px;">
-          <button type="button" class="btn" onclick="openSupervisorOverlay()" style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; width: 100%; border-radius: 12px; font-weight: 700; padding: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(255,255,255,0.2);">
+          <button type="button" class="btn" onclick="openSupervisorOverlay()"
+            style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; width: 100%; border-radius: 12px; font-weight: 700; padding: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(255,255,255,0.2);">
             📋 Buka Panel Approval Supervisor (<span id="spvStep3Badge">0</span> Pengajuan)
           </button>
         </div>
-        <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()" style="margin-top: 10px;">Batal Scan</button>
+        <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()" style="margin-top: 10px;">Batal
+          Scan</button>
       </div>
 
       <div id="scanResult" class="feedback-message"></div>
     </div>
 
-  <!-- VIEW 2: REGISTRASI WAJAH KARYAWAN -->
-  <div id="viewRegister" class="view-screen">
-    <div class="form-group">
-      <label for="regNRP">Nomor Registrasi Pegawai (NRP)</label>
-      <input type="text" id="regNRP" placeholder="Masukkan NRP Anda">
-    </div>
+    <!-- VIEW 2: REGISTRASI WAJAH KARYAWAN -->
+    <div id="viewRegister" class="view-screen">
+      <div class="form-group">
+        <label for="regNRP">Nomor Registrasi Pegawai (NRP)</label>
+        <input type="text" id="regNRP" placeholder="Masukkan NRP Anda">
+      </div>
 
-    <div id="registerCameraArea" style="display:none;">
-      <label>Pendaftaran Sampel Wajah (Kamera Depan)</label>
-      <div class="camera-viewport">
-        <video id="regFaceVideo" autoplay muted playsinline></video>
-        <div class="face-overlay">
-          <div class="face-guide-oval"></div>
+      <div id="registerCameraArea" style="display:none;">
+        <label>Pendaftaran Sampel Wajah (Kamera Depan)</label>
+        <div class="camera-viewport">
+          <video id="regFaceVideo" autoplay muted playsinline></video>
+          <div class="face-overlay">
+            <div class="face-guide-oval"></div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+          <button id="btnCapturePhoto" class="btn"
+            onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
+          <button class="btn btn-secondary" style="flex:0.5;" onclick="stopRegistrationCamera()">Batal</button>
+        </div>
+
+        <div id="regProgress"
+          style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
+          Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.
         </div>
       </div>
 
-      <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-        <button id="btnCapturePhoto" class="btn"
-          onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
-        <button class="btn btn-secondary" style="flex:0.5;" onclick="stopRegistrationCamera()">Batal</button>
-      </div>
-
-      <div id="regProgress"
-        style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
-        Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.
-      </div>
+      <button id="btnStartReg" class="btn" onclick="startRegistrationFlow()">Mulai Registrasi</button>
+      <div id="regResult" class="feedback-message"></div>
     </div>
-
-    <button id="btnStartReg" class="btn" onclick="startRegistrationFlow()">Mulai Registrasi</button>
-    <div id="regResult" class="feedback-message"></div>
-  </div>
 
   </div>
 
@@ -824,7 +856,8 @@
   <!-- Unbind Device Request Modal (Minta Unbind / Reset Device HP Baru) -->
   <div class="overlay" id="unbindDeviceOverlay" style="display: none;">
     <div class="modal-card">
-      <h2 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 10px; text-align: center; color: var(--text-main);">
+      <h2
+        style="font-size: 1.3rem; font-weight: 700; margin-bottom: 10px; text-align: center; color: var(--text-main);">
         📱 Permintaan Unbind Device
       </h2>
       <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 18px;">
@@ -836,14 +869,16 @@
       </div>
       <div class="form-group">
         <label for="unbindReason">Alasan Pengajuan</label>
-        <select id="unbindReason" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color);">
+        <select id="unbindReason"
+          style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color);">
           <option value="Ganti HP / Smartphone Baru">Ganti HP / Smartphone Baru</option>
           <option value="Perangkat HP Rusak / Hilang">Perangkat HP Rusak / Hilang</option>
           <option value="Device ID Reset / Re-install PWA">Device ID Reset / Re-install PWA</option>
           <option value="Lainnya">Lainnya</option>
         </select>
       </div>
-      <button id="btnSendUnbind" class="btn" onclick="sendUnbindDeviceRequest(this)" style="margin-bottom: 10px; background: #ef4444; color: white;">
+      <button id="btnSendUnbind" class="btn" onclick="sendUnbindDeviceRequest(this)"
+        style="margin-bottom: 10px; background: #ef4444; color: white;">
         🚀 Kirim Permintaan Unbind
       </button>
       <button class="btn btn-secondary" onclick="closeUnbindOverlay()">Batal</button>
@@ -857,10 +892,12 @@
       <h2 style="font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; text-align: center; color: var(--text-main);">
         📋 Pilih Shift Kerja
       </h2>
-      <p id="shiftOutletName" style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">
+      <p id="shiftOutletName"
+        style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 20px;">
         Pilih opsi jam kerja untuk outlet Anda
       </p>
-      <div id="shiftOptionsContainer" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 250px; overflow-y: auto;">
+      <div id="shiftOptionsContainer"
+        style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 250px; overflow-y: auto;">
         <!-- Shift options added dynamically -->
       </div>
       <button class="btn btn-secondary" onclick="closeShiftOverlay()">Batal</button>
@@ -870,17 +907,21 @@
   <!-- Reason Selection Modal (Pilih Kategori / Alasan Absen) -->
   <div class="overlay" id="reasonSelectOverlay" style="display: none;">
     <div class="modal-card">
-      <h2 id="reasonModalTitle" style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; text-align: center; color: var(--text-main);">
+      <h2 id="reasonModalTitle"
+        style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; text-align: center; color: var(--text-main);">
         📋 Pilih Kategori / Alasan
       </h2>
-      <p id="reasonModalSub" style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
+      <p id="reasonModalSub"
+        style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
         Pilih opsi kategori absensi jika sesuai (opsional)
       </p>
-      <div id="reasonOptionsContainer" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 250px; overflow-y: auto;">
+      <div id="reasonOptionsContainer"
+        style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 250px; overflow-y: auto;">
         <!-- Dynamic reason options -->
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        <button id="btnSkipReason" class="btn" onclick="skipReasonAndSubmit()" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: var(--text-main); font-weight: 600;">
+        <button id="btnSkipReason" class="btn" onclick="skipReasonAndSubmit()"
+          style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: var(--text-main); font-weight: 600;">
           ⏩ Lanjutkan Tanpa Kategori
         </button>
         <button class="btn btn-secondary" onclick="closeReasonOverlay()">Batal</button>
@@ -894,20 +935,24 @@
       <h2 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; text-align: center; color: var(--text-main);">
         📋 Persetujuan Absensi Staff
       </h2>
-      <p id="spvModalSubtitle" style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
+      <p id="spvModalSubtitle"
+        style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
         Memuat data pengajuan...
       </p>
-      <div id="spvPendingListContainer" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 350px; overflow-y: auto;">
+      <div id="spvPendingListContainer"
+        style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; max-height: 350px; overflow-y: auto;">
         <!-- Dynamic pending approval cards -->
       </div>
       <div style="display: flex; gap: 10px;">
-        <button class="btn" onclick="checkSupervisorRole(true)" style="flex: 1; background: rgba(255,255,255,0.1); font-size: 0.85rem;">🔄 Refresh</button>
-        <button class="btn btn-secondary" onclick="closeSupervisorOverlay()" style="flex: 1; font-size: 0.85rem;">Tutup</button>
+        <button class="btn" onclick="checkSupervisorRole(true)"
+          style="flex: 1; background: rgba(255,255,255,0.1); font-size: 0.85rem;">🔄 Refresh</button>
+        <button class="btn btn-secondary" onclick="closeSupervisorOverlay()"
+          style="flex: 1; font-size: 0.85rem;">Tutup</button>
       </div>
     </div>
   </div>
 
-  <script src="pwa_app.js?v=5.8" type="text/javascript"></script>
+  <script src="pwa_app.js?v=6.0" type="text/javascript"></script>
 </body>
 
 </html>
