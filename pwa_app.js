@@ -2490,11 +2490,19 @@ async function identifyDeviceUser() {
     const response = await fetch(url);
     const resData = await response.json();
 
-    if (resData && resData.status === 'success' && resData.found) {
-      currentUserProfile = resData;
+    const userInfo = (resData && resData.data && typeof resData.data === 'object') 
+      ? resData.data 
+      : ((resData && resData.message && typeof resData.message === 'object') 
+        ? resData.message 
+        : resData);
 
-      if (resData.nrp) {
-        localStorage.setItem('attendance_registered_nrp', resData.nrp);
+    const isSuccess = resData && (resData.status === 'success' || resData.code === 200);
+
+    if (isSuccess && userInfo && (userInfo.found || userInfo.nrp)) {
+      currentUserProfile = userInfo;
+
+      if (userInfo.nrp) {
+        localStorage.setItem('attendance_registered_nrp', userInfo.nrp);
       }
 
       const banner = document.getElementById('userHeaderBanner');
@@ -2505,27 +2513,27 @@ async function identifyDeviceUser() {
       const roleBadge = document.getElementById('userRoleBadge');
 
       if (banner) banner.style.display = 'block';
-      if (nameEl) nameEl.innerText = `👋 Halo, ${resData.name || resData.nrp}`;
-      if (nrpEl) nrpEl.innerText = resData.nrp || '-';
-      if (posEl) posEl.innerText = resData.position || '-';
-      if (outletEl) outletEl.innerText = resData.outlet || '-';
+      if (nameEl) nameEl.innerText = `👋 Halo, ${userInfo.name || userInfo.nrp}`;
+      if (nrpEl) nrpEl.innerText = userInfo.nrp || '-';
+      if (posEl) posEl.innerText = userInfo.position || '-';
+      if (outletEl) outletEl.innerText = userInfo.outlet || '-';
 
       if (roleBadge) {
-        if (resData.is_supervisor) {
+        if (userInfo.is_supervisor) {
           roleBadge.innerText = 'Supervisor';
           roleBadge.style.background = 'rgba(99, 102, 241, 0.25)';
           roleBadge.style.color = '#818cf8';
           roleBadge.style.borderColor = 'rgba(99, 102, 241, 0.4)';
         } else {
-          roleBadge.innerText = resData.position || 'Staff';
+          roleBadge.innerText = userInfo.position || 'Staff';
           roleBadge.style.background = 'rgba(16, 185, 129, 0.2)';
           roleBadge.style.color = '#34d399';
           roleBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
         }
       }
 
-      if (resData.is_supervisor) {
-        checkSupervisorRoleForNRP(resData.nrp, false);
+      if (userInfo.is_supervisor) {
+        checkSupervisorRoleForNRP(userInfo.nrp, false);
       }
     } else if (localNRP) {
       const banner = document.getElementById('userHeaderBanner');
@@ -2571,9 +2579,19 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
     const response = await fetch(GAS_URL + "?action=get_supervisor_pending&nrp=" + encodeURIComponent(targetNRP));
     const resData = await response.json();
 
-    if (resData && resData.status === "success" && resData.is_supervisor) {
+    const dataObj = (resData && resData.data && typeof resData.data === 'object')
+      ? resData.data
+      : ((resData && resData.message && typeof resData.message === 'object')
+        ? resData.message
+        : resData);
+
+    const isSuccess = resData && (resData.status === "success" || resData.code === 200);
+
+    if (isSuccess && dataObj && (dataObj.is_supervisor || resData.is_supervisor)) {
       isSupervisorRole = true;
-      cachedSupervisorPending = resData.pending_requests || [];
+      cachedSupervisorPending = dataObj.pending_requests || resData.pending_requests || [];
+
+      const spvName = dataObj.supervisor_name || resData.supervisor_name || targetNRP;
 
       const banner = document.getElementById('supervisorBanner');
       const badge = document.getElementById('spvBadgeCount');
@@ -2581,7 +2599,7 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
 
       if (banner) banner.style.display = 'block';
       if (badge) badge.innerText = cachedSupervisorPending.length + " Pengajuan";
-      if (spvText) spvText.innerText = "Panel Supervisor (" + (resData.supervisor_name || targetNRP) + ")";
+      if (spvText) spvText.innerText = "Panel Supervisor (" + spvName + ")";
 
       const spvStep3Opt = document.getElementById('spvStep3Option');
       const spvStep3Badge = document.getElementById('spvStep3Badge');
@@ -2589,9 +2607,9 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       if (spvStep3Badge) spvStep3Badge.innerText = cachedSupervisorPending.length;
 
       if (showToast) {
-        showScanResult("✅ Akses Supervisor Aktif (" + (resData.supervisor_name || targetNRP) + "): " + cachedSupervisorPending.length + " antrean", "info");
+        showScanResult("✅ Akses Supervisor Aktif (" + spvName + "): " + cachedSupervisorPending.length + " antrean", "info");
       }
-      renderSupervisorPendingList(resData);
+      renderSupervisorPendingList(dataObj);
     } else {
       isSupervisorRole = false;
       const banner = document.getElementById('supervisorBanner');
