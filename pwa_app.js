@@ -2500,13 +2500,15 @@ async function identifyDeviceUser() {
       const banner = document.getElementById('userHeaderBanner');
       const nameEl = document.getElementById('userNameText');
       const nrpEl = document.getElementById('userNrpVal');
+      const posEl = document.getElementById('userPosVal');
       const outletEl = document.getElementById('userOutletVal');
       const roleBadge = document.getElementById('userRoleBadge');
 
       if (banner) banner.style.display = 'block';
-      if (nameEl) nameEl.innerText = `👋 Halo, ${resData.name}`;
+      if (nameEl) nameEl.innerText = `👋 Halo, ${resData.name || resData.nrp}`;
       if (nrpEl) nrpEl.innerText = resData.nrp || '-';
-      if (outletEl) outletEl.innerText = resData.outlet || 'Pusat';
+      if (posEl) posEl.innerText = resData.position || '-';
+      if (outletEl) outletEl.innerText = resData.outlet || '-';
 
       if (roleBadge) {
         if (resData.is_supervisor) {
@@ -2515,7 +2517,7 @@ async function identifyDeviceUser() {
           roleBadge.style.color = '#818cf8';
           roleBadge.style.borderColor = 'rgba(99, 102, 241, 0.4)';
         } else {
-          roleBadge.innerText = 'Staff';
+          roleBadge.innerText = resData.position || 'Staff';
           roleBadge.style.background = 'rgba(16, 185, 129, 0.2)';
           roleBadge.style.color = '#34d399';
           roleBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
@@ -2529,10 +2531,14 @@ async function identifyDeviceUser() {
       const banner = document.getElementById('userHeaderBanner');
       const nameEl = document.getElementById('userNameText');
       const nrpEl = document.getElementById('userNrpVal');
+      const posEl = document.getElementById('userPosVal');
+      const outletEl = document.getElementById('userOutletVal');
 
       if (banner) banner.style.display = 'block';
       if (nameEl) nameEl.innerText = `👋 Akun Perangkat`;
       if (nrpEl) nrpEl.innerText = localNRP;
+      if (posEl) posEl.innerText = '-';
+      if (outletEl) outletEl.innerText = '-';
       checkSupervisorRoleForNRP(localNRP, false);
     }
   } catch (err) {
