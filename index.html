@@ -654,15 +654,18 @@
     </p>
   </div>
 
-  <header style="position: relative; padding: 12px 16px 6px 16px;">
-    <div style="position: absolute; right: 16px; top: 12px;">
+  <header
+    style="padding: 16px 16px 8px 16px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+    <div style="display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;">
+      <h1
+        style="font-size: 1.5rem; font-weight: 800; margin: 0; background: linear-gradient(135deg, #a5b4fc 0%, #818cf8 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">
+        Smart Attendance</h1>
       <div id="statusBanner" class="status-banner online" title="Status Jaringan Server Cloud">
         <span class="indicator"></span>
         <span id="statusText">Online</span>
       </div>
     </div>
-    <h1>Smart Attendance</h1>
-    <p>Sistem Absensi QR Code & Verifikasi Wajah</p>
+    <p style="font-size: 0.8rem; color: #94a3b8; margin: 0;">Sistem Absensi QR Code & Verifikasi Wajah</p>
   </header>
 
   <!-- User Profile Header Banner (Auto-Identified by Device ID) -->
@@ -673,9 +676,7 @@
         <div style="font-size: 1.05rem; font-weight: 700; color: #f8fafc; margin-top: 2px;" id="userNameText">👋
           Loading...</div>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span id="userRoleBadge"
-          style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 99px;">Staff</span>
+      <div>
         <button type="button" id="spvHeaderBtn" onclick="openSupervisorOverlay()"
           style="display: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; font-size: 0.75rem; font-weight: 700; padding: 5px 12px; align-items: center; gap: 6px; box-shadow: 0 3px 10px rgba(99,102,241,0.4); cursor: pointer;">
           <span>📋 Approval</span>
@@ -702,12 +703,6 @@
       <span id="spvBadgeCount"
         style="background: #ef4444; color: white; font-size: 0.8rem; font-weight: 700; padding: 2px 10px; border-radius: 99px;">0
         Pengajuan</span>
-    </button>
-  </div>
-  <div id="spvManualAccess" style="display: none; margin: 6px 16px 0 16px; text-align: right;">
-    <button type="button" onclick="promptSupervisorNRP()"
-      style="background: none; border: none; color: #818cf8; font-size: 0.78rem; text-decoration: underline; cursor: pointer; font-weight: 600;">
-      🔑 Akses Panel Supervisor (Input NRP)
     </button>
   </div>
 
@@ -952,7 +947,7 @@
     </div>
   </div>
 
-  <script src="pwa_app.js?v=6.0" type="text/javascript"></script>
+  <script src="pwa_app.js?v=6.4" type="text/javascript"></script>
 </body>
 
 </html>

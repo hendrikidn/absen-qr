@@ -2523,27 +2523,13 @@ async function identifyDeviceUser() {
       if (posEl) posEl.innerText = userInfo.position || '-';
       if (outletEl) outletEl.innerText = userInfo.outlet || '-';
 
-      if (roleBadge) {
-        roleBadge.innerText = userInfo.position || (userInfo.is_supervisor ? 'Supervisor' : 'Staff');
-        if (userInfo.is_supervisor) {
-          roleBadge.style.background = 'rgba(99, 102, 241, 0.25)';
-          roleBadge.style.color = '#818cf8';
-          roleBadge.style.borderColor = 'rgba(99, 102, 241, 0.4)';
-        } else {
-          roleBadge.style.background = 'rgba(16, 185, 129, 0.2)';
-          roleBadge.style.color = '#34d399';
-          roleBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
-        }
-      }
-
-      const spvManualBtn = document.getElementById('spvManualAccess');
       if (userInfo.is_supervisor) {
-        if (spvManualBtn) spvManualBtn.style.display = 'block';
         checkSupervisorRoleForNRP(userInfo.nrp, false);
       } else {
-        if (spvManualBtn) spvManualBtn.style.display = 'none';
         const banner = document.getElementById('supervisorBanner');
         if (banner) banner.style.display = 'none';
+        const spvHeaderBtn = document.getElementById('spvHeaderBtn');
+        if (spvHeaderBtn) spvHeaderBtn.style.display = 'none';
         const spvStep3Opt = document.getElementById('spvStep3Option');
         if (spvStep3Opt) spvStep3Opt.style.display = 'none';
       }
@@ -2563,21 +2549,6 @@ async function identifyDeviceUser() {
     }
   } catch (err) {
     console.warn("Gagal mengidentifikasi user berdasarkan Device ID:", err);
-  }
-}
-
-/**
- * Meminta masukan NRP Supervisor secara manual jika perangkat belum terdaftar
- */
-function promptSupervisorNRP() {
-  const currentNRP = localStorage.getItem('attendance_registered_nrp') || 'SNI250042';
-  const inputNRP = prompt("Masukkan NRP Supervisor Anda (Contoh: SNI250042):", currentNRP);
-  if (inputNRP && inputNRP.trim()) {
-    const cleanNRP = inputNRP.trim();
-    localStorage.setItem('attendance_registered_nrp', cleanNRP);
-    checkSupervisorRoleForNRP(cleanNRP, true).then(() => {
-      openSupervisorOverlay();
-    });
   }
 }
 
@@ -2608,7 +2579,6 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       const banner = document.getElementById('supervisorBanner');
       const badge = document.getElementById('spvBadgeCount');
       const spvText = document.getElementById('spvBannerText');
-      const spvManualBtn = document.getElementById('spvManualAccess');
       const spvHeaderBtn = document.getElementById('spvHeaderBtn');
       const spvHeaderBadge = document.getElementById('spvHeaderBadge');
 
@@ -2616,9 +2586,8 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       if (spvHeaderBadge) spvHeaderBadge.innerText = cachedSupervisorPending.length;
 
       if (banner) banner.style.display = 'block';
-      if (spvManualBtn) spvManualBtn.style.display = 'block';
       if (badge) badge.innerText = cachedSupervisorPending.length + " Pengajuan";
-      if (spvText) spvText.innerText = "Panel Supervisor (" + spvName + ")";
+      if (spvText) spvText.innerText = "Panel Supervisor";
 
       const spvStep3Opt = document.getElementById('spvStep3Option');
       const spvStep3Badge = document.getElementById('spvStep3Badge');
@@ -2633,8 +2602,6 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       isSupervisorRole = false;
       const banner = document.getElementById('supervisorBanner');
       if (banner) banner.style.display = 'none';
-      const spvManualBtn = document.getElementById('spvManualAccess');
-      if (spvManualBtn) spvManualBtn.style.display = 'none';
       const spvHeaderBtn = document.getElementById('spvHeaderBtn');
       if (spvHeaderBtn) spvHeaderBtn.style.display = 'none';
       const spvStep3Opt = document.getElementById('spvStep3Option');
