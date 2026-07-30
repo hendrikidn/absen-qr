@@ -587,7 +587,7 @@ function resetToScanStep1() {
  * Pindah ke Langkah 3: Pilih Menu Absensi (2x2 Grid)
  * Dipanggil setelah Verifikasi Wajah & Liveness Check berhasil pada Langkah 2
  */
-function showScanStep3() {
+async function showScanStep3() {
   const step1 = document.getElementById('scanStep1');
   const step2 = document.getElementById('scanStep2');
   const step3 = document.getElementById('scanStep3');
@@ -595,6 +595,37 @@ function showScanStep3() {
   if (step1) step1.style.display = 'none';
   if (step2) step2.style.display = 'none';
   if (step3) step3.style.display = 'block';
+
+  const localNRP = localStorage.getItem('attendance_registered_nrp') || '';
+  const deviceId = getOrCreateDeviceId();
+
+  // Sinkronisasi status absensi real-time dari Google Sheets sebelum menampilkan Langkah 3
+  if (localNRP || deviceId) {
+    try {
+      showScanResult("⏳ Menyinkronkan status absensi terbaru dari Google Sheets...", "info");
+      const syncUrl = `${GAS_URL}?action=get_user_by_device_id&device_id=${encodeURIComponent(deviceId)}&nrp=${encodeURIComponent(localNRP)}`;
+      const resp = await fetch(syncUrl);
+      const resData = await resp.json();
+      const userInfo = (resData && resData.data && typeof resData.data === 'object') ? resData.data : resData;
+      
+      if (userInfo && userInfo.today_status && (userInfo.nrp || localNRP)) {
+        const targetNrp = userInfo.nrp || localNRP;
+        saveTodayAttendanceStatus(targetNrp, {
+          hasClockIn: userInfo.today_status.has_clock_in || false,
+          hasClockOut: userInfo.today_status.has_clock_out || false,
+          lastType: userInfo.today_status.last_type || "",
+          lastTime: new Date().toISOString()
+        });
+        showScanResult("✅ Status absensi hari ini tersinkronisasi dengan Cloud.", "info");
+        setTimeout(() => {
+          const resEl = document.getElementById('scanResult');
+          if (resEl) resEl.style.display = 'none';
+        }, 1200);
+      }
+    } catch (err) {
+      console.warn("Sinkronisasi absensi real-time pra-Langkah 3 terlewat:", err);
+    }
+  }
 
   // Ambil daftar shift outlet dari server secara otomatis
   if (scannedQRData && (scannedQRData.outlet || scannedQRData.outlet_id)) {
@@ -610,7 +641,6 @@ function showScanStep3() {
   });
 
   // Check supervisor role for the active user NRP
-  const localNRP = localStorage.getItem('attendance_registered_nrp');
   if (localNRP) {
     checkSupervisorRoleForNRP(localNRP, false);
   }
@@ -2150,6 +2180,9 @@ async function captureFaceEmbeddings(btnElement) {
       localStorage.removeItem('attendance_registered_embeddings');
       localStorage.setItem('attendance_registered_device_id', deviceId);
 
+      // Trigger pembaruan profil user header banner
+      identifyDeviceUser();
+
       const serverMessage = resData && resData.message ? resData.message : ("Registrasi Wajah NRP " + nrp + " Berhasil!");
       showRegResult("✅ " + serverMessage, "success");
 
@@ -2311,6 +2344,9 @@ async function syncFaceProfile(btnElement) {
       } else {
         localStorage.setItem('attendance_registered_device_id', deviceId);
       }
+
+      // Trigger pembaruan profil user header banner
+      identifyDeviceUser();
 
       showSyncResult("✅ Perangkat berhasil disinkronkan! Profil NRP " + nrp + " terverifikasi.", "success");
 
@@ -2488,6 +2524,21 @@ async function identifyDeviceUser() {
   const deviceId = getOrCreateDeviceId();
   const localNRP = localStorage.getItem('attendance_registered_nrp') || '';
 
+  // Render instan terlebih dahulu dari LocalStorage (jika ada) tanpa menunggu respon jaringan
+  const banner = document.getElementById('userHeaderBanner');
+  const nameEl = document.getElementById('userNameText');
+  const nrpEl = document.getElementById('userNrpVal');
+  const posEl = document.getElementById('userPosVal');
+  const outletEl = document.getElementById('userOutletVal');
+
+  if (localNRP) {
+    if (banner) banner.style.display = 'block';
+    if (nrpEl) nrpEl.innerText = localNRP;
+    if (nameEl && (!nameEl.innerText || nameEl.innerText.includes('Loading'))) {
+      nameEl.innerText = `👋 Halo, ${localNRP}`;
+    }
+  }
+
   if (!deviceId && !localNRP) return;
 
   try {
@@ -2520,36 +2571,25 @@ async function identifyDeviceUser() {
         });
       }
 
-      const banner = document.getElementById('userHeaderBanner');
-      const nameEl = document.getElementById('userNameText');
-      const nrpEl = document.getElementById('userNrpVal');
-      const posEl = document.getElementById('userPosVal');
-      const outletEl = document.getElementById('userOutletVal');
-      const roleBadge = document.getElementById('userRoleBadge');
-
       if (banner) banner.style.display = 'block';
       if (nameEl) nameEl.innerText = `👋 Halo, ${userInfo.name || userInfo.nrp}`;
-      if (nrpEl) nrpEl.innerText = userInfo.nrp || '-';
+      if (nrpEl) nrpEl.innerText = userInfo.nrp || localNRP || '-';
       if (posEl) posEl.innerText = userInfo.position || '-';
       if (outletEl) outletEl.innerText = userInfo.outlet || '-';
 
       if (userInfo.is_supervisor) {
         checkSupervisorRoleForNRP(userInfo.nrp, false);
       } else {
-        const banner = document.getElementById('supervisorBanner');
-        if (banner) banner.style.display = 'none';
+        const legacyBanner = document.getElementById('supervisorBanner');
+        if (legacyBanner) legacyBanner.style.display = 'none';
         const spvHeaderBtn = document.getElementById('spvHeaderBtn');
         if (spvHeaderBtn) spvHeaderBtn.style.display = 'none';
       }
     } else if (localNRP) {
-      const banner = document.getElementById('userHeaderBanner');
-      const nameEl = document.getElementById('userNameText');
-      const nrpEl = document.getElementById('userNrpVal');
-      const posEl = document.getElementById('userPosVal');
-      const outletEl = document.getElementById('userOutletVal');
-
       if (banner) banner.style.display = 'block';
-      if (nameEl) nameEl.innerText = `👋 Akun Perangkat`;
+      if (nameEl && (!nameEl.innerText || nameEl.innerText.includes('Loading'))) {
+        nameEl.innerText = `👋 Halo, ${localNRP}`;
+      }
       if (nrpEl) nrpEl.innerText = localNRP;
       if (posEl) posEl.innerText = '-';
       if (outletEl) outletEl.innerText = '-';
@@ -2557,6 +2597,9 @@ async function identifyDeviceUser() {
     }
   } catch (err) {
     console.warn("Gagal mengidentifikasi user berdasarkan Device ID:", err);
+    if (localNRP && banner) {
+      banner.style.display = 'block';
+    }
   }
 }
 

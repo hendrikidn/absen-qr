@@ -671,25 +671,31 @@
   <div class="container">
 
     <!-- User Profile Header Banner (Auto-Identified by Device ID) -->
-    <div id="userHeaderBanner" style="display: none; margin-bottom: 16px; background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 12px 16px; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+    <div id="userHeaderBanner"
+      style="display: none; margin-bottom: 16px; background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 12px 16px; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
         <div style="flex: 1; min-width: 0;">
-          <div style="font-size: 1.05rem; font-weight: 700; color: #f8fafc; line-height: 1.3; word-break: break-word;" id="userNameText">👋 Loading...</div>
+          <div style="font-size: 1.05rem; font-weight: 700; color: #f8fafc; line-height: 1.3; word-break: break-word;"
+            id="userNameText">👋 Loading...</div>
         </div>
         <div style="flex-shrink: 0;">
-          <button type="button" id="spvHeaderBtn" onclick="openSupervisorOverlay()" style="display: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; font-size: 0.75rem; font-weight: 700; padding: 6px 12px; align-items: center; gap: 6px; box-shadow: 0 3px 10px rgba(99,102,241,0.4); cursor: pointer; white-space: nowrap;">
+          <button type="button" id="spvHeaderBtn" onclick="openSupervisorOverlay()"
+            style="display: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; font-size: 0.75rem; font-weight: 700; padding: 6px 12px; align-items: center; gap: 6px; box-shadow: 0 3px 10px rgba(99,102,241,0.4); cursor: pointer; white-space: nowrap;">
             <span>📋 Approval</span>
-            <span id="spvHeaderBadge" style="background: #ef4444; color: white; font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 99px;">0</span>
+            <span id="spvHeaderBadge"
+              style="background: #ef4444; color: white; font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 99px;">0</span>
           </button>
         </div>
       </div>
-      <div style="font-size: 0.78rem; color: #cbd5e1; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+      <div
+        style="font-size: 0.78rem; color: #cbd5e1; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
           <span>NRP: <strong id="userNrpVal">-</strong></span>
           <span>Posisi: <strong id="userPosVal">-</strong></span>
           <span>Outlet: <strong id="userOutletVal">-</strong></span>
         </div>
-        <button type="button" onclick="openUnbindOverlay()" style="background: none; border: none; color: #818cf8; font-size: 0.73rem; text-decoration: underline; cursor: pointer; font-weight: 600;">
+        <button type="button" onclick="openUnbindOverlay()"
+          style="background: none; border: none; color: #818cf8; font-size: 0.73rem; text-decoration: underline; cursor: pointer; font-weight: 600;">
           📱 Request Unbind HP
         </button>
       </div>
@@ -759,44 +765,45 @@
           </button>
         </div>
 
-        <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()" style="margin-top: 14px;">Batal Scan</button>
+        <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()" style="margin-top: 14px;">Batal
+          Scan</button>
       </div>
-      </div>
-
-      <div id="scanResult" class="feedback-message"></div>
     </div>
 
-    <!-- VIEW 2: REGISTRASI WAJAH KARYAWAN -->
-    <div id="viewRegister" class="view-screen">
-      <div class="form-group">
-        <label for="regNRP">Nomor Registrasi Pegawai (NRP)</label>
-        <input type="text" id="regNRP" placeholder="Masukkan NRP Anda">
-      </div>
+    <div id="scanResult" class="feedback-message"></div>
+  </div>
 
-      <div id="registerCameraArea" style="display:none;">
-        <label>Pendaftaran Sampel Wajah (Kamera Depan)</label>
-        <div class="camera-viewport">
-          <video id="regFaceVideo" autoplay muted playsinline></video>
-          <div class="face-overlay">
-            <div class="face-guide-oval"></div>
-          </div>
-        </div>
-
-        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-          <button id="btnCapturePhoto" class="btn"
-            onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
-          <button class="btn btn-secondary" style="flex:0.5;" onclick="stopRegistrationCamera()">Batal</button>
-        </div>
-
-        <div id="regProgress"
-          style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
-          Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.
-        </div>
-      </div>
-
-      <button id="btnStartReg" class="btn" onclick="startRegistrationFlow()">Mulai Registrasi</button>
-      <div id="regResult" class="feedback-message"></div>
+  <!-- VIEW 2: REGISTRASI WAJAH KARYAWAN -->
+  <div id="viewRegister" class="view-screen">
+    <div class="form-group">
+      <label for="regNRP">Nomor Registrasi Pegawai (NRP)</label>
+      <input type="text" id="regNRP" placeholder="Masukkan NRP Anda">
     </div>
+
+    <div id="registerCameraArea" style="display:none;">
+      <label>Pendaftaran Sampel Wajah (Kamera Depan)</label>
+      <div class="camera-viewport">
+        <video id="regFaceVideo" autoplay muted playsinline></video>
+        <div class="face-overlay">
+          <div class="face-guide-oval"></div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+        <button id="btnCapturePhoto" class="btn"
+          onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
+        <button class="btn btn-secondary" style="flex:0.5;" onclick="stopRegistrationCamera()">Batal</button>
+      </div>
+
+      <div id="regProgress"
+        style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
+        Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.
+      </div>
+    </div>
+
+    <button id="btnStartReg" class="btn" onclick="startRegistrationFlow()">Mulai Registrasi</button>
+    <div id="regResult" class="feedback-message"></div>
+  </div>
 
   </div>
 
@@ -924,46 +931,55 @@
         <button class="btn btn-secondary" onclick="closeSupervisorOverlay()"
           style="flex: 1; font-size: 0.85rem;">Tutup</button>
       </div>
-  <!-- Device Unbind Request Modal for Employees -->
-  <div class="overlay" id="unbindModalOverlay" style="display: none;">
-    <div class="modal-card" style="max-width: 440px; width: 92%;">
-      <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 4px; text-align: center; color: var(--text-main);">
-        📱 Pengajuan Unbind Perangkat HP
-      </h2>
-      <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
-        Ajukan pelepasan ikatan perangkat jika Anda akan mengganti HP baru atau perbaikan perangkat. HR Admin akan meninjau pengajuan Anda.
-      </p>
+      <!-- Device Unbind Request Modal for Employees -->
+      <div class="overlay" id="unbindModalOverlay" style="display: none;">
+        <div class="modal-card" style="max-width: 440px; width: 92%;">
+          <h2
+            style="font-size: 1.15rem; font-weight: 700; margin-bottom: 4px; text-align: center; color: var(--text-main);">
+            📱 Pengajuan Unbind Perangkat HP
+          </h2>
+          <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
+            Ajukan pelepasan ikatan perangkat jika Anda akan mengganti HP baru atau perbaikan perangkat. HR Admin akan
+            meninjau pengajuan Anda.
+          </p>
 
-      <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; text-align: left;">
-        <div>
-          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">NRP Karyawan</label>
-          <input type="text" id="unbindReqNrp" placeholder="Masukkan NRP Anda" style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; font-weight: 600;">
-        </div>
+          <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; text-align: left;">
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">NRP Karyawan</label>
+              <input type="text" id="unbindReqNrp" placeholder="Masukkan NRP Anda"
+                style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; font-weight: 600;">
+            </div>
 
-        <div>
-          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Alasan Pengajuan</label>
-          <select id="unbindReqReason" style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: #1e293b; border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; font-weight: 600;">
-            <option value="📱 Ganti Perangkat HP Baru">📱 Ganti Perangkat HP Baru</option>
-            <option value="🔧 HP Rusak / Sedang Di-service">🔧 HP Rusak / Sedang Di-service</option>
-            <option value="⚠️ Reset Browser / PWA Data">⚠️ Reset Browser / PWA Data</option>
-            <option value="Lainnya">Lainnya</option>
-          </select>
-        </div>
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Alasan Pengajuan</label>
+              <select id="unbindReqReason"
+                style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: #1e293b; border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; font-weight: 600;">
+                <option value="📱 Ganti Perangkat HP Baru">📱 Ganti Perangkat HP Baru</option>
+                <option value="🔧 HP Rusak / Sedang Di-service">🔧 HP Rusak / Sedang Di-service</option>
+                <option value="⚠️ Reset Browser / PWA Data">⚠️ Reset Browser / PWA Data</option>
+                <option value="Lainnya">Lainnya</option>
+              </select>
+            </div>
 
-        <div>
-          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Catatan Tambahan (Opsional)</label>
-          <input type="text" id="unbindReqNotes" placeholder="Contoh: HP lama hilang/layar pecah" style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc;">
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Catatan Tambahan
+                (Opsional)</label>
+              <input type="text" id="unbindReqNotes" placeholder="Contoh: HP lama hilang/layar pecah"
+                style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc;">
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn" onclick="submitUnbindRequest()"
+              style="flex: 1.2; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); font-size: 0.85rem; font-weight: 700;">🚀
+              Kirim ke HR</button>
+            <button type="button" class="btn btn-secondary" onclick="closeUnbindOverlay()"
+              style="flex: 0.8; font-size: 0.85rem;">Batal</button>
+          </div>
         </div>
       </div>
 
-      <div style="display: flex; gap: 10px;">
-        <button type="button" class="btn" onclick="submitUnbindRequest()" style="flex: 1.2; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); font-size: 0.85rem; font-weight: 700;">🚀 Kirim ke HR</button>
-        <button type="button" class="btn btn-secondary" onclick="closeUnbindOverlay()" style="flex: 0.8; font-size: 0.85rem;">Batal</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="pwa_app.js?v=6.8" type="text/javascript"></script>
+      <script src="pwa_app.js?v=7.0" type="text/javascript"></script>
 </body>
 
 </html>
