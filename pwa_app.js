@@ -217,6 +217,24 @@ window.addEventListener('DOMContentLoaded', async () => {
   identifyDeviceUser();
   await loadFaceApiModels();
 
+  // Cek status unbind di background (non-blocking) saat app dibuka
+  // Ini menangani kasus karyawan buka PWA tanpa scan QR tapi sudah ada request pending/approved
+  const startupNRP = localStorage.getItem('attendance_registered_nrp') ||
+                     localStorage.getItem('attendance_pending_unbind_nrp');
+  if (startupNRP && navigator.onLine) {
+    // Jalankan di background, tidak blocking startup
+    setTimeout(async () => {
+      const unbindStatus = await checkUnbindStatusFromServer(startupNRP);
+      if (unbindStatus.status === 'PENDING') {
+        localStorage.setItem('attendance_pending_unbind_nrp', startupNRP);
+        showUnbindPendingScreen(startupNRP, unbindStatus.requested_at);
+      } else if (unbindStatus.status === 'APPROVED') {
+        await handleUnbindApproved(startupNRP);
+      }
+      // NONE / REJECTED: tidak perlu aksi
+    }, 2000); // Delay 2 detik agar UI selesai render dulu
+  }
+
   // Cek jika halaman dibuka dari scan kamera bawaan HP (parameter URL)
   const hasURLParams = checkURLParameters();
   if (!hasURLParams && currentView === 'scan') {
@@ -255,8 +273,20 @@ function checkURLParameters() {
       return true;
     }
 
-    // Pindah langsung ke Langkah 2: Verifikasi Wajah (Kamera Depan)
-    startLivenessCamera();
+    // Cek status unbind sebelum lanjut ke kamera — async tapi fungsi ini sync
+    // Gunakan IIFE async agar tidak mengubah return type
+    (async () => {
+      const unbindStatus = await checkUnbindStatusFromServer(localNRP);
+      if (unbindStatus.status === 'PENDING') {
+        localStorage.setItem('attendance_pending_unbind_nrp', localNRP);
+        showUnbindPendingScreen(localNRP, unbindStatus.requested_at);
+      } else if (unbindStatus.status === 'APPROVED') {
+        await handleUnbindApproved(localNRP);
+      } else {
+        // Pindah langsung ke Langkah 2: Verifikasi Wajah (Kamera Depan)
+        startLivenessCamera();
+      }
+    })();
     return true;
   }
   return false;
@@ -1352,6 +1382,24 @@ async function onQRScanSuccess(decodedText, decodedResult) {
         if (!localNRP) {
           openSyncOverlay();
         } else {
+          // === CEK STATUS UNBIND SEBELUM LANJUT ===
+          dbgLog('🔍 Mengecek status unbind untuk NRP: ' + localNRP);
+          const unbindStatus = await checkUnbindStatusFromServer(localNRP);
+          dbgLog('📋 Status unbind: ' + unbindStatus.status);
+
+          if (unbindStatus.status === 'PENDING') {
+            // Karyawan tidak bisa absen — tampilkan overlay tunggu HR
+            localStorage.setItem('attendance_pending_unbind_nrp', localNRP);
+            showUnbindPendingScreen(localNRP, unbindStatus.requested_at);
+            isProcessingQRScan = false;
+            return; // Stop di sini
+          } else if (unbindStatus.status === 'APPROVED') {
+            // Device sudah di-approve untuk diganti — arahkan ke registrasi ulang
+            await handleUnbindApproved(localNRP);
+            isProcessingQRScan = false;
+            return; // Stop di sini
+          }
+          // Status NONE / REJECTED: lanjut normal
           await startLivenessCamera();
           dbgLog('✅ Kamera depan aktif — Langkah 2 dimulai!');
         }
@@ -1365,6 +1413,7 @@ async function onQRScanSuccess(decodedText, decodedResult) {
         setTimeout(() => startQRScanner(), 1000);
       }
     }, 300);
+
 
   } catch (error) {
     isProcessingQRScan = false;
@@ -2531,10 +2580,19 @@ async function sendUnbindDeviceRequest(btnElement) {
 
     if (isSuccess) {
       showUnbindResult("✅ " + (data.message || "Permintaan unbind berhasil dikirim ke HR Admin!"), "success");
-      setTimeout(() => {
-        closeUnbindOverlay();
-        alert("✅ Permintaan unbind device untuk NRP " + nrp + " telah berhasil dikirim ke HR Admin!");
-      }, 1500);
+      
+      // Simpan NRP sebagai flag "pending unbind" sebelum data lain dihapus
+      try { localStorage.setItem('attendance_pending_unbind_nrp', nrp); } catch(e) {}
+      
+      // Sembunyikan tombol kirim dan batal agar tidak bisa diklik lagi
+      if (btnElement) btnElement.style.display = 'none';
+      const cancelBtn = document.querySelector('#unbindDeviceOverlay .btn-secondary');
+      if (cancelBtn) cancelBtn.style.display = 'none';
+
+      // Setelah 2 detik, hapus semua data lokal dan tutup tab
+      setTimeout(async () => {
+        await clearAllLocalDataAndClose(nrp);
+      }, 2000);
     } else {
       showUnbindResult("❌ Ditolak Server: " + (data.message || "Gagal mengirim permintaan."), "error");
       if (btnElement) btnElement.disabled = false;
@@ -2556,8 +2614,263 @@ function showUnbindResult(message, type) {
 }
 
 /* ==========================================================================
-   FUNGSI SUPERVISOR APPROVAL (OPSI 1: PWA MOBILE SPV MODE)
+   FUNGSI UNBIND DEVICE LIFECYCLE
    ========================================================================== */
+
+/**
+ * Menghapus semua data lokal (localStorage, Service Worker cache) dan menutup tab PWA.
+ * Dipanggil setelah request unbind berhasil dikirim ATAU setelah status APPROVED terdeteksi.
+ */
+async function clearAllLocalDataAndClose(nrp) {
+  console.log('[Unbind] Menghapus semua data lokal untuk NRP:', nrp);
+  
+  // 1. Hapus semua localStorage
+  try {
+    // Hapus satu per satu kunci yang diketahui + semua prefix dinamis
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k) keysToRemove.push(k);
+    }
+    keysToRemove.forEach(k => {
+      if (
+        k.startsWith('attendance_') ||
+        k.startsWith('outlet_shifts_')
+      ) {
+        localStorage.removeItem(k);
+      }
+    });
+    console.log('[Unbind] localStorage dibersihkan.');
+  } catch (e) {
+    console.warn('[Unbind] Gagal membersihkan localStorage:', e);
+  }
+
+  // 2. Unregister Service Worker & hapus semua cache
+  try {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registrations) {
+        await reg.unregister();
+      }
+      console.log('[Unbind] Service Worker di-unregister.');
+    }
+    if ('caches' in window) {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map(name => caches.delete(name)));
+      console.log('[Unbind] Semua cache dihapus.');
+    }
+  } catch (e) {
+    console.warn('[Unbind] Gagal unregister SW atau hapus cache:', e);
+  }
+
+  // 3. Tutup tab / tampilkan pesan instruksi
+  console.log('[Unbind] Mencoba menutup tab...');
+  try {
+    // Tampilkan overlay pesan penutupan terlebih dahulu
+    const overlay = document.getElementById('unbindDeviceOverlay');
+    if (overlay) {
+      const card = overlay.querySelector('.modal-card') || overlay.querySelector('div');
+      if (card) {
+        card.innerHTML = `
+          <div style="text-align:center; padding: 20px;">
+            <div style="font-size:3rem; margin-bottom:16px;">✅</div>
+            <h3 style="color:#10b981; margin-bottom:12px;">Permintaan Terkirim!</h3>
+            <p style="color:rgba(255,255,255,0.75); font-size:0.9rem; line-height:1.6;">
+              Data perangkat ini telah dihapus.<br>
+              Tab akan ditutup dalam 3 detik.<br><br>
+              Jika tab tidak tertutup otomatis,<br>silakan tutup tab ini secara manual.
+            </p>
+          </div>
+        `;
+      }
+    }
+    window.setTimeout(() => {
+      window.close();
+      // Jika window.close() tidak berhasil (dibuka manual), reload ke halaman kosong
+      setTimeout(() => {
+        if (!window.closed) {
+          window.location.replace('about:blank');
+        }
+      }, 500);
+    }, 3000);
+  } catch (e) {
+    console.warn('[Unbind] Gagal menutup tab:', e);
+  }
+}
+
+/**
+ * Mengecek status unbind request untuk NRP tertentu dari server GAS.
+ * Return: { status: "PENDING" | "APPROVED" | "REJECTED" | "NONE" }
+ */
+async function checkUnbindStatusFromServer(nrp) {
+  if (!nrp || !GAS_URL || GAS_URL === '__GAS_URL__') {
+    return { status: 'NONE' };
+  }
+  try {
+    const url = `${GAS_URL}?action=check_unbind_status&nrp=${encodeURIComponent(nrp)}`;
+    const response = await fetch(url, { cache: 'no-store' });
+    const resData = await response.json();
+    
+    const isSuccess = resData && (resData.status === 'success' || resData.code === 200);
+    if (isSuccess) {
+      const payload = (resData.data && typeof resData.data === 'object') ? resData.data
+        : ((resData.message && typeof resData.message === 'object') ? resData.message : {});
+      return {
+        status: payload.status || 'NONE',
+        requested_at: payload.requested_at || ''
+      };
+    }
+    return { status: 'NONE' };
+  } catch (err) {
+    console.warn('[Unbind] Gagal cek status dari server:', err);
+    return { status: 'NONE' }; // Jika offline/error, biarkan lanjut (offline-first)
+  }
+}
+
+/**
+ * Menampilkan overlay "Menunggu Persetujuan HR" — memblokir semua aktivitas di PWA.
+ */
+function showUnbindPendingScreen(nrp, requestedAt) {
+  const overlay = document.getElementById('unbindPendingOverlay');
+  if (!overlay) return;
+  
+  const nrpInfo = document.getElementById('unbindPendingNrpInfo');
+  if (nrpInfo) {
+    const dateStr = requestedAt ? ` • Dikirim: ${requestedAt}` : '';
+    nrpInfo.innerText = `NRP: ${nrp}${dateStr}`;
+  }
+  
+  overlay.style.display = 'flex';
+  
+  // Pastikan tidak ada overlay lain yang terbuka
+  ['unbindDeviceOverlay', 'syncOverlay', 'shiftSelectOverlay', 'reasonSelectOverlay', 'supervisorApprovalOverlay'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  
+  console.log('[Unbind] Overlay pending HR ditampilkan untuk NRP:', nrp);
+}
+
+/**
+ * Tombol "Cek Status Ulang" di overlay pending — mengecek apakah sudah di-approve.
+ */
+async function retryUnbindStatusCheck() {
+  const nrp = localStorage.getItem('attendance_pending_unbind_nrp') || localStorage.getItem('attendance_registered_nrp');
+  if (!nrp) return;
+  
+  const icon = document.getElementById('unbindPendingIcon');
+  const title = document.getElementById('unbindPendingTitle');
+  const msg = document.getElementById('unbindPendingMsg');
+  
+  if (icon) icon.innerText = '🔄';
+  if (title) title.innerText = 'Mengecek Status...';
+  if (msg) msg.innerText = 'Menghubungi server, harap tunggu...';
+  
+  const result = await checkUnbindStatusFromServer(nrp);
+  
+  if (result.status === 'APPROVED') {
+    // Approved! Hapus data lokal dan arahkan ke registrasi ulang
+    await handleUnbindApproved(nrp);
+  } else if (result.status === 'PENDING') {
+    // Masih pending
+    if (icon) icon.innerText = '⏳';
+    if (title) { title.innerText = 'Menunggu Persetujuan HR'; title.style.color = '#f59e0b'; }
+    if (msg) msg.innerHTML = 'Permintaan Anda masih dalam proses review.<br><br>Silakan hubungi HR Admin.';
+  } else if (result.status === 'REJECTED') {
+    // Ditolak — sembunyikan overlay agar karyawan bisa kembali scan
+    if (icon) icon.innerText = '❌';
+    if (title) { title.innerText = 'Permintaan Ditolak'; title.style.color = '#ef4444'; }
+    if (msg) msg.innerHTML = 'Permintaan unbind device Anda ditolak oleh HR Admin.<br>Silakan hubungi HR Admin untuk informasi lebih lanjut.';
+    // Hapus flag pending
+    localStorage.removeItem('attendance_pending_unbind_nrp');
+    // Sembunyikan overlay setelah 4 detik
+    setTimeout(() => {
+      const overlay = document.getElementById('unbindPendingOverlay');
+      if (overlay) overlay.style.display = 'none';
+    }, 4000);
+  } else {
+    // NONE / tidak ditemukan — kemungkinan sudah di-clear atau error
+    if (icon) icon.innerText = '✅';
+    if (title) { title.innerText = 'Status Tidak Ditemukan'; title.style.color = '#10b981'; }
+    if (msg) msg.innerHTML = 'Tidak ada permintaan aktif yang ditemukan.<br>Anda dapat kembali menggunakan PWA.';
+    localStorage.removeItem('attendance_pending_unbind_nrp');
+    setTimeout(() => {
+      const overlay = document.getElementById('unbindPendingOverlay');
+      if (overlay) overlay.style.display = 'none';
+    }, 3000);
+  }
+}
+
+/**
+ * Menangani status APPROVED: hapus semua data lokal & arahkan ke form registrasi ulang.
+ */
+async function handleUnbindApproved(nrp) {
+  console.log('[Unbind] Status APPROVED terdeteksi untuk NRP:', nrp, '— menghapus data lokal...');
+  
+  const overlay = document.getElementById('unbindPendingOverlay');
+  const icon = document.getElementById('unbindPendingIcon');
+  const title = document.getElementById('unbindPendingTitle');
+  const msg = document.getElementById('unbindPendingMsg');
+  
+  if (icon) icon.innerText = '✅';
+  if (title) { title.innerText = 'Disetujui HR!'; title.style.color = '#10b981'; }
+  if (msg) msg.innerHTML = 'Permintaan penggantian device Anda telah disetujui.<br><br>Hapus data lokal, silakan registrasi ulang wajah Anda di perangkat baru.';
+  
+  // Hapus semua data lokal kecuali tanda bahwa perlu registrasi ulang
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k) keysToRemove.push(k);
+    }
+    keysToRemove.forEach(k => {
+      if (
+        k === 'attendance_registered_nrp' ||
+        k === 'attendance_device_id' ||
+        k === 'attendance_user_name' ||
+        k === 'attendance_user_position' ||
+        k === 'attendance_user_outlet' ||
+        k === 'attendance_pending_unbind_nrp' ||
+        k.startsWith('attendance_status_') ||
+        k.startsWith('outlet_shifts_')
+      ) {
+        localStorage.removeItem(k);
+      }
+    });
+    console.log('[Unbind Approved] Data lokal dihapus.');
+  } catch (e) {
+    console.warn('[Unbind Approved] Gagal hapus localStorage:', e);
+  }
+  
+  // Sembunyikan overlay pending setelah 2 detik lalu tampilkan form registrasi
+  setTimeout(() => {
+    if (overlay) overlay.style.display = 'none';
+    
+    // Reset face recognition state
+    faceMatcher = null;
+    latestLiveDescriptor = null;
+    livenessPassed = false;
+    faceVerified = false;
+    isAttendanceSubmitted = false;
+    
+    // Tampilkan overlay sinkronisasi / registrasi ulang
+    if (typeof openSyncOverlay === 'function') {
+      openSyncOverlay();
+      // Update pesan di dalam overlay
+      setTimeout(() => {
+        const syncTitle = document.querySelector('#syncOverlay h2, #syncOverlay .modal-card h2');
+        const syncMsg = document.querySelector('#syncOverlay p, #syncOverlay .modal-card p');
+        if (syncTitle) syncTitle.innerText = '📲 Registrasi Ulang Wajah';
+        if (syncMsg) syncMsg.innerText = 'Device Anda telah disetujui untuk diganti. Silakan masukkan NRP dan lakukan registrasi wajah ulang di device baru ini.';
+      }, 100);
+    } else {
+      // Fallback: switch ke tab registrasi
+      if (typeof switchView === 'function') switchView('register');
+    }
+  }, 2500);
+}
+
+
 
 let cachedSupervisorPending = [];
 let isSupervisorRole = false;
