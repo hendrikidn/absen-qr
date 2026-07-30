@@ -683,10 +683,15 @@
           </button>
         </div>
       </div>
-      <div style="font-size: 0.78rem; color: #cbd5e1; margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap;">
-        <span>NRP: <strong id="userNrpVal">-</strong></span>
-        <span>Posisi: <strong id="userPosVal">-</strong></span>
-        <span>Outlet: <strong id="userOutletVal">-</strong></span>
+      <div style="font-size: 0.78rem; color: #cbd5e1; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <span>NRP: <strong id="userNrpVal">-</strong></span>
+          <span>Posisi: <strong id="userPosVal">-</strong></span>
+          <span>Outlet: <strong id="userOutletVal">-</strong></span>
+        </div>
+        <button type="button" onclick="openUnbindOverlay()" style="background: none; border: none; color: #818cf8; font-size: 0.73rem; text-decoration: underline; cursor: pointer; font-weight: 600;">
+          📱 Request Unbind HP
+        </button>
       </div>
     </div>
 
@@ -919,10 +924,46 @@
         <button class="btn btn-secondary" onclick="closeSupervisorOverlay()"
           style="flex: 1; font-size: 0.85rem;">Tutup</button>
       </div>
+  <!-- Device Unbind Request Modal for Employees -->
+  <div class="overlay" id="unbindModalOverlay" style="display: none;">
+    <div class="modal-card" style="max-width: 440px; width: 92%;">
+      <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 4px; text-align: center; color: var(--text-main);">
+        📱 Pengajuan Unbind Perangkat HP
+      </h2>
+      <p style="font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-bottom: 16px;">
+        Ajukan pelepasan ikatan perangkat jika Anda akan mengganti HP baru atau perbaikan perangkat. HR Admin akan meninjau pengajuan Anda.
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; text-align: left;">
+        <div>
+          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">NRP Karyawan</label>
+          <input type="text" id="unbindReqNrp" placeholder="Masukkan NRP Anda" style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; font-weight: 600;">
+        </div>
+
+        <div>
+          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Alasan Pengajuan</label>
+          <select id="unbindReqReason" style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: #1e293b; border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; font-weight: 600;">
+            <option value="📱 Ganti Perangkat HP Baru">📱 Ganti Perangkat HP Baru</option>
+            <option value="🔧 HP Rusak / Sedang Di-service">🔧 HP Rusak / Sedang Di-service</option>
+            <option value="⚠️ Reset Browser / PWA Data">⚠️ Reset Browser / PWA Data</option>
+            <option value="Lainnya">Lainnya</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Catatan Tambahan (Opsional)</label>
+          <input type="text" id="unbindReqNotes" placeholder="Contoh: HP lama hilang/layar pecah" style="width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc;">
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <button type="button" class="btn" onclick="submitUnbindRequest()" style="flex: 1.2; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); font-size: 0.85rem; font-weight: 700;">🚀 Kirim ke HR</button>
+        <button type="button" class="btn btn-secondary" onclick="closeUnbindOverlay()" style="flex: 0.8; font-size: 0.85rem;">Batal</button>
+      </div>
     </div>
   </div>
 
-  <script src="pwa_app.js?v=6.6" type="text/javascript"></script>
+  <script src="pwa_app.js?v=6.8" type="text/javascript"></script>
 </body>
 
 </html>
