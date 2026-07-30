@@ -599,32 +599,24 @@ async function showScanStep3() {
   const localNRP = localStorage.getItem('attendance_registered_nrp') || '';
   const deviceId = getOrCreateDeviceId();
 
-  // Sinkronisasi status absensi real-time dari Google Sheets sebelum menampilkan Langkah 3
+  // Sinkronisasi status absensi real-time dari Google Sheets di background (non-blocking)
   if (localNRP || deviceId) {
-    try {
-      showScanResult("⏳ Menyinkronkan status absensi terbaru dari Google Sheets...", "info");
-      const syncUrl = `${GAS_URL}?action=get_user_by_device_id&device_id=${encodeURIComponent(deviceId)}&nrp=${encodeURIComponent(localNRP)}`;
-      const resp = await fetch(syncUrl);
-      const resData = await resp.json();
-      const userInfo = (resData && resData.data && typeof resData.data === 'object') ? resData.data : resData;
-      
-      if (userInfo && userInfo.today_status && (userInfo.nrp || localNRP)) {
-        const targetNrp = userInfo.nrp || localNRP;
-        saveTodayAttendanceStatus(targetNrp, {
-          hasClockIn: userInfo.today_status.has_clock_in || false,
-          hasClockOut: userInfo.today_status.has_clock_out || false,
-          lastType: userInfo.today_status.last_type || "",
-          lastTime: new Date().toISOString()
-        });
-        showScanResult("✅ Status absensi hari ini tersinkronisasi dengan Cloud.", "info");
-        setTimeout(() => {
-          const resEl = document.getElementById('scanResult');
-          if (resEl) resEl.style.display = 'none';
-        }, 1200);
-      }
-    } catch (err) {
-      console.warn("Sinkronisasi absensi real-time pra-Langkah 3 terlewat:", err);
-    }
+    const syncUrl = `${GAS_URL}?action=get_user_by_device_id&device_id=${encodeURIComponent(deviceId)}&nrp=${encodeURIComponent(localNRP)}`;
+    fetch(syncUrl)
+      .then(resp => resp.json())
+      .then(resData => {
+        const userInfo = (resData && resData.data && typeof resData.data === 'object') ? resData.data : resData;
+        if (userInfo && userInfo.today_status && (userInfo.nrp || localNRP)) {
+          const targetNrp = userInfo.nrp || localNRP;
+          saveTodayAttendanceStatus(targetNrp, {
+            hasClockIn: userInfo.today_status.has_clock_in || false,
+            hasClockOut: userInfo.today_status.has_clock_out || false,
+            lastType: userInfo.today_status.last_type || "",
+            lastTime: new Date().toISOString()
+          });
+        }
+      })
+      .catch(err => console.warn("Sinkronisasi absensi background error:", err));
   }
 
   // Ambil daftar shift outlet dari server secara otomatis
@@ -1526,8 +1518,15 @@ async function restartQRScanner() {
 /**
  * Membuka kamera depan untuk Verifikasi Wajah & Liveness Check
  */
+let smileFrameCount = 0;
+
+/**
+ * Membuka kamera depan untuk Verifikasi Wajah & Liveness Check
+ */
 async function startLivenessCamera() {
+  livenessPassed = false;
   baselineSmileRatio = null; // Reset baseline saat kamera terbuka
+  smileFrameCount = 0;
 
   try { 
     await stopAllCameras();
@@ -1607,6 +1606,7 @@ async function runLivenessLoop(video) {
     faceVerified = false;
     latestLiveDescriptor = null;
     baselineSmileRatio = null;
+    smileFrameCount = 0;
     faceGuide.className = "face-guide-oval";
     challengeText.innerText = "Dekatkan wajah Anda ke kamera";
   }
@@ -1625,9 +1625,9 @@ function checkSmileLiveness(landmarks) {
 
   if (!mouth || mouth.length < 10 || !leftEye || !rightEye) return false;
 
-  // Jarak horizontal sudut bibir
+  // Jarak horizontal sudut bibir (kiri ke kanan)
   const mouthWidth = Math.hypot(mouth[6].x - mouth[0].x, mouth[6].y - mouth[0].y);
-  // Jarak kedua mata
+  // Jarak kedua mata (sebagai referensi skala wajah)
   const eyeWidth = Math.hypot(rightEye[3].x - leftEye[0].x, rightEye[3].y - leftEye[0].y);
 
   if (eyeWidth === 0) return false;
@@ -1637,21 +1637,24 @@ function checkSmileLiveness(landmarks) {
   // Tangkap rasio wajah netral saat pertama kali terdeteksi di oval
   if (baselineSmileRatio === null) {
     baselineSmileRatio = currentSmileRatio;
+    smileFrameCount = 0;
     return false;
   }
 
-  // Kriteria 1: Bibir melebar setidaknya 14% dari baseline netral pengguna
-  const isWidthStretched = (currentSmileRatio >= baselineSmileRatio * 1.14) && (currentSmileRatio > 0.54);
+  // Persentase pelebaran bibir dibanding baseline netral
+  const ratioIncrease = (currentSmileRatio - baselineSmileRatio) / baselineSmileRatio;
 
-  // Kriteria 2: Terangkatnya sudut bibir
-  const mouthCenterY = (mouth[0].y + mouth[6].y) / 2;
-  const mouthBottomY = mouth[9].y;
-  const cornerLift = (mouthBottomY - mouthCenterY) / eyeWidth;
+  // Deteksi senyum valid: pelebaran bibir setidaknya 12% dari baseline netral
+  const isSmiling = ratioIncrease >= 0.12 && currentSmileRatio > 0.50;
 
-  console.log("Current Ratio:", currentSmileRatio.toFixed(3), "Baseline:", baselineSmileRatio.toFixed(3), "Lift:", cornerLift.toFixed(3));
+  if (isSmiling) {
+    smileFrameCount++;
+  } else {
+    smileFrameCount = Math.max(0, smileFrameCount - 1);
+  }
 
-  // Senyum hanya dianggap VALID jika terjadi perubahan ekspresi senyum nyata dari wajah netral
-  return isWidthStretched || (cornerLift > 0.20 && currentSmileRatio >= baselineSmileRatio * 1.08);
+  // Wajib tersenyum nyata secara stabil minimal 3 frame berturut-turut
+  return smileFrameCount >= 3;
 }
 
 /**
