@@ -2530,8 +2530,6 @@ async function identifyDeviceUser() {
         if (banner) banner.style.display = 'none';
         const spvHeaderBtn = document.getElementById('spvHeaderBtn');
         if (spvHeaderBtn) spvHeaderBtn.style.display = 'none';
-        const spvStep3Opt = document.getElementById('spvStep3Option');
-        if (spvStep3Opt) spvStep3Opt.style.display = 'none';
       }
     } else if (localNRP) {
       const banner = document.getElementById('userHeaderBanner');
@@ -2589,11 +2587,6 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       if (badge) badge.innerText = cachedSupervisorPending.length + " Pengajuan";
       if (spvText) spvText.innerText = "Panel Supervisor";
 
-      const spvStep3Opt = document.getElementById('spvStep3Option');
-      const spvStep3Badge = document.getElementById('spvStep3Badge');
-      if (spvStep3Opt) spvStep3Opt.style.display = 'block';
-      if (spvStep3Badge) spvStep3Badge.innerText = cachedSupervisorPending.length;
-
       if (showToast) {
         showScanResult("✅ Akses Supervisor Aktif (" + spvName + "): " + cachedSupervisorPending.length + " antrean", "info");
       }
@@ -2604,8 +2597,6 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       if (banner) banner.style.display = 'none';
       const spvHeaderBtn = document.getElementById('spvHeaderBtn');
       if (spvHeaderBtn) spvHeaderBtn.style.display = 'none';
-      const spvStep3Opt = document.getElementById('spvStep3Option');
-      if (spvStep3Opt) spvStep3Opt.style.display = 'none';
 
       if (showToast) {
         alert("⚠️ NRP '" + targetNRP + "' tidak terdeteksi sebagai Supervisor di MP Database.");

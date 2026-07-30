@@ -668,27 +668,27 @@
     <p style="font-size: 0.8rem; color: #94a3b8; margin: 0;">Sistem Absensi QR Code & Verifikasi Wajah</p>
   </header>
 
-  <!-- User Profile Header Banner (Auto-Identified by Device ID) -->
-  <div id="userHeaderBanner" style="display: none; margin: 10px 16px 0 16px; background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 12px 16px; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
-    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-      <div style="flex: 1; min-width: 0;">
-        <div style="font-size: 1.05rem; font-weight: 700; color: #f8fafc; line-height: 1.3; word-break: break-word;" id="userNameText">👋 Loading...</div>
-      </div>
-      <div style="flex-shrink: 0;">
-        <button type="button" id="spvHeaderBtn" onclick="openSupervisorOverlay()" style="display: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; font-size: 0.75rem; font-weight: 700; padding: 6px 12px; align-items: center; gap: 6px; box-shadow: 0 3px 10px rgba(99,102,241,0.4); cursor: pointer; white-space: nowrap;">
-          <span>📋 Approval</span>
-          <span id="spvHeaderBadge" style="background: #ef4444; color: white; font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 99px;">0</span>
-        </button>
-      </div>
-    </div>
-    <div style="font-size: 0.78rem; color: #cbd5e1; margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap;">
-      <span>NRP: <strong id="userNrpVal">-</strong></span>
-      <span>Posisi: <strong id="userPosVal">-</strong></span>
-      <span>Outlet: <strong id="userOutletVal">-</strong></span>
-    </div>
-  </div>
-
   <div class="container">
+
+    <!-- User Profile Header Banner (Auto-Identified by Device ID) -->
+    <div id="userHeaderBanner" style="display: none; margin-bottom: 16px; background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 12px 16px; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 1.05rem; font-weight: 700; color: #f8fafc; line-height: 1.3; word-break: break-word;" id="userNameText">👋 Loading...</div>
+        </div>
+        <div style="flex-shrink: 0;">
+          <button type="button" id="spvHeaderBtn" onclick="openSupervisorOverlay()" style="display: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; font-size: 0.75rem; font-weight: 700; padding: 6px 12px; align-items: center; gap: 6px; box-shadow: 0 3px 10px rgba(99,102,241,0.4); cursor: pointer; white-space: nowrap;">
+            <span>📋 Approval</span>
+            <span id="spvHeaderBadge" style="background: #ef4444; color: white; font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 99px;">0</span>
+          </button>
+        </div>
+      </div>
+      <div style="font-size: 0.78rem; color: #cbd5e1; margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap;">
+        <span>NRP: <strong id="userNrpVal">-</strong></span>
+        <span>Posisi: <strong id="userPosVal">-</strong></span>
+        <span>Outlet: <strong id="userOutletVal">-</strong></span>
+      </div>
+    </div>
 
     <!-- Tab Bar -->
     <div class="tab-bar">
@@ -754,15 +754,8 @@
           </button>
         </div>
 
-        <!-- Tombol khusus jika Karyawan yang melakukan Absen adalah Supervisor -->
-        <div id="spvStep3Option" style="display: none; margin-top: 12px;">
-          <button type="button" class="btn" onclick="openSupervisorOverlay()"
-            style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; width: 100%; border-radius: 12px; font-weight: 700; padding: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(255,255,255,0.2);">
-            📋 Buka Panel Approval Supervisor (<span id="spvStep3Badge">0</span> Pengajuan)
-          </button>
-        </div>
-        <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()" style="margin-top: 10px;">Batal
-          Scan</button>
+        <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()" style="margin-top: 14px;">Batal Scan</button>
+      </div>
       </div>
 
       <div id="scanResult" class="feedback-message"></div>
@@ -929,7 +922,7 @@
     </div>
   </div>
 
-  <script src="pwa_app.js?v=6.5" type="text/javascript"></script>
+  <script src="pwa_app.js?v=6.6" type="text/javascript"></script>
 </body>
 
 </html>
