@@ -28,6 +28,7 @@ let isBlinked = false;
 let livenessPassed = false;
 let faceVerified = false;
 let baselineSmileRatio = null;
+let isAttendanceSubmitted = false;
 
 /**
  * Helper untuk mendapatkan tanggal lokal (YYYY-MM-DD) sesuai zona waktu pengguna (bukan UTC)
@@ -599,12 +600,15 @@ async function showScanStep3() {
   const localNRP = localStorage.getItem('attendance_registered_nrp') || '';
   const deviceId = getOrCreateDeviceId();
 
-  // Sinkronisasi status absensi real-time dari Google Sheets di background (non-blocking)
+  // Sinkronisasi status absensi real-time dari Google Sheets di background (non-blocking & safe)
   if (localNRP || deviceId) {
     const syncUrl = `${GAS_URL}?action=get_user_by_device_id&device_id=${encodeURIComponent(deviceId)}&nrp=${encodeURIComponent(localNRP)}`;
     fetch(syncUrl)
       .then(resp => resp.json())
       .then(resData => {
+        // Abaikan respon sinkronisasi jika absensi sudah berhasil dikirim
+        if (isAttendanceSubmitted) return;
+
         const userInfo = (resData && resData.data && typeof resData.data === 'object') ? resData.data : resData;
         if (userInfo && userInfo.today_status && (userInfo.nrp || localNRP)) {
           const targetNrp = userInfo.nrp || localNRP;
@@ -1667,6 +1671,8 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "",
   const localNRP = localStorage.getItem('attendance_registered_nrp') || 'Karyawan';
   const challengeText = document.getElementById('challengeText');
 
+  isAttendanceSubmitted = true;
+
   // Disable menu buttons in step 3 to prevent multiple clicks
   const menuButtons = document.querySelectorAll('#scanStep3 .menu-card');
   menuButtons.forEach(btn => {
@@ -1925,10 +1931,10 @@ async function sendToGAS(payload) {
     if (challengeText) challengeText.innerText = "✅ " + successMsg;
     showScanResult("✅ " + successMsg, "success");
 
-    // Berikan jeda 3 detik untuk memberikan konfirmasi ke pengguna, lalu tutup tab browser
+    // Berikan jeda 1.2 detik untuk konfirmasi visual, lalu langsung jalankan penutupan tab
     setTimeout(() => {
       closeBrowserTab();
-    }, 3000);
+    }, 1200);
 
   } catch (error) {
     console.error("Koneksi gagal/offline saat mengirim ke GAS:", error);
@@ -1949,22 +1955,25 @@ function closeBrowserTab() {
     console.log("Window close error:", e);
   }
 
-  // Fallback jika browser memblokir window.close() otomatis
+  // Tampilkan layar sukses jika browser memblokir window.close()
   setTimeout(() => {
-    document.body.innerHTML = `
-      <div style="min-height: 100vh; background: #0b0f19; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Outfit', sans-serif; text-align: center; padding: 24px;">
-        <div style="width: 80px; height: 80px; background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; margin-bottom: 24px; box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);">
-          ✓
-        </div>
-        <h1 style="font-size: 1.8rem; font-weight: 700; color: #ffffff; margin-bottom: 8px;">Absensi Selesai!</h1>
-        <p style="color: #9ca3af; font-size: 0.95rem; margin-bottom: 32px; max-width: 320px; line-height: 1.5;">
-          Data kehadiran Anda telah berhasil diverifikasi dan tersimpan.
-        </p>
-        <button onclick="window.close();" style="background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; border: none; padding: 14px 32px; border-radius: 12px; font-weight: 600; font-size: 1rem; cursor: pointer; box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);">
-          Tutup Halaman
-        </button>
-      </div>`;
-  }, 300);
+    const container = document.querySelector('.container') || document.body;
+    if (container) {
+      container.innerHTML = `
+        <div style="padding: 40px 20px; text-align: center; font-family: 'Outfit', sans-serif;">
+          <div style="width: 76px; height: 76px; background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.3rem; margin: 0 auto 20px auto; box-shadow: 0 0 25px rgba(16, 185, 129, 0.3);">
+            ✓
+          </div>
+          <h2 style="font-size: 1.6rem; font-weight: 700; color: #ffffff; margin-bottom: 8px;">Absensi Berhasil!</h2>
+          <p style="color: #9ca3af; font-size: 0.9rem; margin-bottom: 24px; line-height: 1.5;">
+            Data kehadiran Anda telah berhasil tersimpan di server.
+          </p>
+          <button onclick="try{window.close();}catch(e){}" class="btn" style="background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; padding: 12px 24px; border-radius: 10px; font-weight: 600; width: 100%; cursor: pointer;">
+            Tutup Halaman
+          </button>
+        </div>`;
+    }
+  }, 200);
 }
 
 // =========================================================================
