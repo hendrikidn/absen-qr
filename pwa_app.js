@@ -640,6 +640,57 @@ let pendingAttendanceType = null;
 let pendingWorkingHour = "";
 
 /**
+ * Helper untuk meng-parse jam kerja "HH:MM - HH:MM" dari string working_hour
+ * Returns: { start: "08:00", end: "17:00" } atau null jika tidak dapat di-parse
+ */
+function parseWorkingHours(workingHourStr) {
+  if (!workingHourStr || typeof workingHourStr !== 'string') return null;
+  const match = workingHourStr.match(/(\d{1,2}[:\.]\d{2})\s*[-–—to]+\s*(\d{1,2}[:\.]\d{2})/i);
+  if (!match) return null;
+
+  const normalize = (t) => {
+    let [h, m] = t.replace('.', ':').split(':');
+    h = h.padStart(2, '0');
+    m = m.padStart(2, '0');
+    return `${h}:${m}`;
+  };
+
+  return {
+    start: normalize(match[1]),
+    end: normalize(match[2])
+  };
+}
+
+/**
+ * Helper untuk mendapatkan waktu lokal saat ini dalam format "HH:MM"
+ */
+function getCurrentTimeStr() {
+  const d = new Date();
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+/**
+ * Memeriksa apakah modal alasan perlu ditunjukkan:
+ * - CLOCK_IN: HANYA jika jam skrg > start working_hour (Terlambat)
+ * - CLOCK_OUT: HANYA jika jam skrg < end working_hour (Pulang Awal)
+ */
+function checkShouldTriggerReasonModal(attendanceType, workingHourStr) {
+  const wh = parseWorkingHours(workingHourStr);
+  if (!wh) return false;
+
+  const nowTime = getCurrentTimeStr();
+
+  if (attendanceType === 'CLOCK_IN') {
+    return nowTime > wh.start;
+  } else if (attendanceType === 'CLOCK_OUT') {
+    return nowTime < wh.end;
+  }
+  return false;
+}
+
+/**
  * Menangani Klik Tombol Masuk Kerja (Clock In)
  * Jika terdapat pilihan shift per outlet, tampilkan dialog pemilihan shift.
  */
@@ -668,7 +719,7 @@ async function handleClockInClick() {
   if (cachedOutletShifts && cachedOutletShifts.length > 0) {
     openShiftOverlay();
   } else {
-    openReasonOverlay('CLOCK_IN', '');
+    submitAttendance('CLOCK_IN', '', '');
   }
 }
 
@@ -686,6 +737,7 @@ function handleClockOutClick() {
 
   const hasClockIn = localStatus.hasClockIn || false;
   const lastType = localStatus.lastType || null;
+  const workingHour = localStatus.working_hour || '';
 
   if (!hasClockIn) {
     showScanResult("❌ Absensi Ditolak: Anda harus melakukan Clock In (Masuk Kerja) terlebih dahulu sebelum Clock Out.", "error");
@@ -700,7 +752,13 @@ function handleClockOutClick() {
     return;
   }
 
-  openReasonOverlay('CLOCK_OUT', '');
+  const shouldTrigger = checkShouldTriggerReasonModal('CLOCK_OUT', workingHour);
+
+  if (shouldTrigger) {
+    openReasonOverlay('CLOCK_OUT', workingHour);
+  } else {
+    submitAttendance('CLOCK_OUT', workingHour, '');
+  }
 }
 
 /**
@@ -712,7 +770,7 @@ function openShiftOverlay() {
   const container = document.getElementById('shiftOptionsContainer');
 
   if (!overlay || !container) {
-    openReasonOverlay('CLOCK_IN', '');
+    submitAttendance('CLOCK_IN', '', '');
     return;
   }
 
@@ -735,7 +793,12 @@ function openShiftOverlay() {
     btn.innerHTML = `<span style="font-weight: 600; font-size: 0.95rem;">${shiftText}</span><span style="font-size:0.85rem; color:var(--text-muted);">${hourText}</span>`;
     btn.onclick = () => {
       closeShiftOverlay();
-      openReasonOverlay('CLOCK_IN', hourVal);
+      const shouldTrigger = checkShouldTriggerReasonModal('CLOCK_IN', hourVal);
+      if (shouldTrigger) {
+        openReasonOverlay('CLOCK_IN', hourVal);
+      } else {
+        submitAttendance('CLOCK_IN', hourVal, '');
+      }
     };
     container.appendChild(btn);
   });
@@ -771,18 +834,16 @@ function openReasonOverlay(attendanceType, selectedWorkingHour = '') {
 
   let options = [];
   if (attendanceType === 'CLOCK_IN') {
-    if (title) title.innerText = "📋 Kategori / Alasan Masuk Kerja";
-    if (sub) sub.innerText = "Silakan pilih opsi kategori absensi masuk:";
+    if (title) title.innerText = "📋 Kategori / Alasan Terlambat";
+    if (sub) sub.innerText = "Waktu masuk kerja melebihi jam mulai shift. Silakan pilih alasan jika ada (opsional):";
     options = [
-      { label: "🟢 Absen Biasa / Tepat Waktu", value: "", note: "Absen harian rutin tanpa perizinan khusus" },
       { label: "⏰ Izin Terlambat", value: "Izin Terlambat", note: "Memerlukan Persetujuan Supervisor" },
       { label: "📝 Lupa Absen", value: "Lupa Absen", note: "Memerlukan Persetujuan Supervisor" }
     ];
   } else if (attendanceType === 'CLOCK_OUT') {
-    if (title) title.innerText = "📋 Kategori / Alasan Pulang Kerja";
-    if (sub) sub.innerText = "Silakan pilih opsi kategori absensi pulang:";
+    if (title) title.innerText = "📋 Kategori / Alasan Pulang Awal";
+    if (sub) sub.innerText = "Waktu pulang lebih awal dari jam selesai shift. Silakan pilih alasan jika ada (opsional):";
     options = [
-      { label: "🔴 Pulang Normal / Sesuai Jadwal", value: "", note: "Pulang sesuai jam kerja rutin" },
       { label: "🏃 Pulang Awal", value: "Pulang Awal", note: "Memerlukan Persetujuan Supervisor" }
     ];
   }
@@ -802,6 +863,11 @@ function openReasonOverlay(attendanceType, selectedWorkingHour = '') {
   });
 
   overlay.style.display = 'flex';
+}
+
+function skipReasonAndSubmit() {
+  closeReasonOverlay();
+  submitAttendance(pendingAttendanceType, pendingWorkingHour, '');
 }
 
 function closeReasonOverlay() {
@@ -1710,14 +1776,15 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "",
 /**
  * Menyimpan status absensi lokal untuk NRP pengguna pada hari ini
  */
-function saveLocalAttendanceStatus(nrp, attendanceType) {
+function saveLocalAttendanceStatus(nrp, attendanceType, workingHour = "") {
   try {
     const todayDateStr = getTodayDateStr();
     const key = 'attendance_status_' + nrp + '_' + todayDateStr;
     const current = JSON.parse(localStorage.getItem(key) || '{}');
     localStorage.setItem(key, JSON.stringify({
       hasClockIn: current.hasClockIn || (attendanceType === 'CLOCK_IN'),
-      lastType: attendanceType
+      lastType: attendanceType,
+      working_hour: workingHour || current.working_hour || ""
     }));
   } catch (e) { }
 }
@@ -1764,7 +1831,7 @@ async function sendToGAS(payload) {
       return;
     }
 
-    saveLocalAttendanceStatus(payload.nrp, payload.attendance_type);
+    saveLocalAttendanceStatus(payload.nrp, payload.attendance_type, payload.working_hour);
 
     // Broadcast event absensi ke outlet_display.html (Auto Refresh Setelah Clock In)
     try {
@@ -1843,7 +1910,7 @@ function enqueueOfflineRecord(payload) {
     localStorage.setItem('offline_attendance_queue', JSON.stringify(queue));
   }
 
-  saveLocalAttendanceStatus(payload.nrp, payload.attendance_type);
+  saveLocalAttendanceStatus(payload.nrp, payload.attendance_type, payload.working_hour);
 
   updateOfflineBadge();
   showScanResult("Koneksi internet lambat/mati. Absen Anda berhasil diverifikasi & disimpan lokal secara aman. Otomatis disinkronkan saat sinyal membaik.", "warning");
