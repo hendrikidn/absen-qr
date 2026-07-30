@@ -765,46 +765,51 @@
           </button>
         </div>
 
-        <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()" style="margin-top: 14px;">Batal
-          Scan</button>
+      <button id="btnCancelScan3" class="btn btn-secondary" onclick="cancelScan()" style="margin-top: 14px;">Batal Scan</button>
+      </div>
+    </div>
+
+    <!-- VIEW 2: REGISTRASI WAJAH KARYAWAN -->
+    <div id="viewRegister" class="view-screen">
+      <div class="form-group">
+        <label for="regNRP">Nomor Registrasi Pegawai (NRP)</label>
+        <input type="text" id="regNRP" placeholder="Masukkan NRP Anda">
+      </div>
+
+      <div id="registerCameraArea" style="display:none;">
+        <label>Pendaftaran Sampel Wajah (Kamera Depan)</label>
+        <div class="camera-viewport">
+          <video id="regFaceVideo" autoplay muted playsinline></video>
+          <div class="face-overlay">
+            <div class="face-guide-oval"></div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+          <button id="btnCapturePhoto" class="btn"
+            onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
+          <button class="btn btn-secondary" style="flex:0.5;" onclick="stopRegistrationCamera()">Batal</button>
+        </div>
+
+        <div id="regProgress"
+          style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
+          Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.
+        </div>
+      </div>
+
+      <button id="btnStartReg" class="btn" onclick="startRegistrationFlow()">Mulai Registrasi</button>
+      <div id="regResult" class="feedback-message"></div>
+
+      <!-- Container Request Unbind HP (Di dalam Tab Registrasi) -->
+      <div style="margin-top: 20px; padding-top: 16px; border-top: 1px dashed rgba(255,255,255,0.15); text-align: center;">
+        <p style="font-size: 0.83rem; color: var(--text-muted); margin-bottom: 8px;">Ganti HP baru atau perangkat belum di-unbind?</p>
+        <button type="button" class="btn btn-secondary" onclick="openUnbindOverlay()" style="font-size: 0.85rem; padding: 10px 14px; width: 100%; border-color: rgba(239, 68, 68, 0.4); color: #ef4444;">
+          📱 Request Unbind HP / Ganti Perangkat
+        </button>
       </div>
     </div>
 
     <div id="scanResult" class="feedback-message"></div>
-  </div>
-
-  <!-- VIEW 2: REGISTRASI WAJAH KARYAWAN -->
-  <div id="viewRegister" class="view-screen">
-    <div class="form-group">
-      <label for="regNRP">Nomor Registrasi Pegawai (NRP)</label>
-      <input type="text" id="regNRP" placeholder="Masukkan NRP Anda">
-    </div>
-
-    <div id="registerCameraArea" style="display:none;">
-      <label>Pendaftaran Sampel Wajah (Kamera Depan)</label>
-      <div class="camera-viewport">
-        <video id="regFaceVideo" autoplay muted playsinline></video>
-        <div class="face-overlay">
-          <div class="face-guide-oval"></div>
-        </div>
-      </div>
-
-      <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-        <button id="btnCapturePhoto" class="btn"
-          onclick="this.style.display='none'; this.disabled=true; captureFaceEmbeddings(this);">Ambil Foto</button>
-        <button class="btn btn-secondary" style="flex:0.5;" onclick="stopRegistrationCamera()">Batal</button>
-      </div>
-
-      <div id="regProgress"
-        style="font-size:0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 10px;">
-        Posisikan wajah Anda di dalam bidang oval lalu tekan tombol <strong>Ambil Foto</strong>.
-      </div>
-    </div>
-
-    <button id="btnStartReg" class="btn" onclick="startRegistrationFlow()">Mulai Registrasi</button>
-    <div id="regResult" class="feedback-message"></div>
-  </div>
-
   </div>
 
   <!-- Sync NRP Modal (Diberikan bila di-scan di browser baru yang belum diregistrasi) -->
@@ -979,7 +984,7 @@
         </div>
       </div>
 
-      <script src="pwa_app.js?v=7.0" type="text/javascript"></script>
+      <script src="pwa_app.js?v=7.3" type="text/javascript"></script>
 </body>
 
 </html>

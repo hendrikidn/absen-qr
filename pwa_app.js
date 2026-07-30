@@ -2428,7 +2428,7 @@ function openUnbindOverlay(prefillNRP) {
   if (prefillNRP && inputNrp) {
     inputNrp.value = prefillNRP;
   } else if (inputNrp && !inputNrp.value) {
-    const savedNrp = localStorage.getItem('attendance_registered_nrp');
+    const savedNrp = localStorage.getItem('attendance_registered_nrp') || (currentUserProfile ? currentUserProfile.nrp : '');
     if (savedNrp) inputNrp.value = savedNrp;
   }
   
@@ -2482,13 +2482,14 @@ async function sendUnbindDeviceRequest(btnElement) {
     });
     
     const data = await response.json();
-    if (data.status === "success") {
-      showUnbindResult("✅ " + data.message, "success");
-      localStorage.removeItem('attendance_registered_device_id');
-      localStorage.removeItem('attendance_registered_nrp');
+    const isSuccess = data && (data.status === "success" || data.code === 200);
+
+    if (isSuccess) {
+      showUnbindResult("✅ " + (data.message || "Permintaan unbind berhasil dikirim ke HR Admin!"), "success");
       setTimeout(() => {
         closeUnbindOverlay();
-      }, 3500);
+        alert("✅ Permintaan unbind device untuk NRP " + nrp + " telah berhasil dikirim ke HR Admin!");
+      }, 1500);
     } else {
       showUnbindResult("❌ Ditolak Server: " + (data.message || "Gagal mengirim permintaan."), "error");
       if (btnElement) btnElement.disabled = false;
@@ -2532,11 +2533,15 @@ async function identifyDeviceUser() {
   const outletEl = document.getElementById('userOutletVal');
 
   if (localNRP) {
+    const cachedName = localStorage.getItem('attendance_user_name') || localNRP;
+    const cachedPos = localStorage.getItem('attendance_user_position') || '-';
+    const cachedOutlet = localStorage.getItem('attendance_user_outlet') || '-';
+
     if (banner) banner.style.display = 'block';
     if (nrpEl) nrpEl.innerText = localNRP;
-    if (nameEl && (!nameEl.innerText || nameEl.innerText.includes('Loading'))) {
-      nameEl.innerText = `👋 Halo, ${localNRP}`;
-    }
+    if (nameEl) nameEl.innerText = `👋 Halo, ${cachedName}`;
+    if (posEl) posEl.innerText = cachedPos;
+    if (outletEl) outletEl.innerText = cachedOutlet;
   }
 
   if (!deviceId && !localNRP) return;
@@ -2560,6 +2565,15 @@ async function identifyDeviceUser() {
       if (userInfo.nrp) {
         localStorage.setItem('attendance_registered_nrp', userInfo.nrp);
       }
+      if (userInfo.name) {
+        localStorage.setItem('attendance_user_name', userInfo.name);
+      }
+      if (userInfo.position) {
+        localStorage.setItem('attendance_user_position', userInfo.position);
+      }
+      if (userInfo.outlet) {
+        localStorage.setItem('attendance_user_outlet', userInfo.outlet);
+      }
 
       // Sinkronisasi Otomatis Status Absensi Hari Ini dari Cloud ke Perangkat Baru
       if (userInfo.today_status && userInfo.nrp) {
@@ -2574,8 +2588,8 @@ async function identifyDeviceUser() {
       if (banner) banner.style.display = 'block';
       if (nameEl) nameEl.innerText = `👋 Halo, ${userInfo.name || userInfo.nrp}`;
       if (nrpEl) nrpEl.innerText = userInfo.nrp || localNRP || '-';
-      if (posEl) posEl.innerText = userInfo.position || '-';
-      if (outletEl) outletEl.innerText = userInfo.outlet || '-';
+      if (posEl) posEl.innerText = userInfo.position || localStorage.getItem('attendance_user_position') || '-';
+      if (outletEl) outletEl.innerText = userInfo.outlet || localStorage.getItem('attendance_user_outlet') || '-';
 
       if (userInfo.is_supervisor) {
         checkSupervisorRoleForNRP(userInfo.nrp, false);
@@ -2586,13 +2600,15 @@ async function identifyDeviceUser() {
         if (spvHeaderBtn) spvHeaderBtn.style.display = 'none';
       }
     } else if (localNRP) {
+      const cachedName = localStorage.getItem('attendance_user_name') || localNRP;
+      const cachedPos = localStorage.getItem('attendance_user_position') || '-';
+      const cachedOutlet = localStorage.getItem('attendance_user_outlet') || '-';
+
       if (banner) banner.style.display = 'block';
-      if (nameEl && (!nameEl.innerText || nameEl.innerText.includes('Loading'))) {
-        nameEl.innerText = `👋 Halo, ${localNRP}`;
-      }
+      if (nameEl) nameEl.innerText = `👋 Halo, ${cachedName}`;
       if (nrpEl) nrpEl.innerText = localNRP;
-      if (posEl) posEl.innerText = '-';
-      if (outletEl) outletEl.innerText = '-';
+      if (posEl) posEl.innerText = cachedPos;
+      if (outletEl) outletEl.innerText = cachedOutlet;
       checkSupervisorRoleForNRP(localNRP, false);
     }
   } catch (err) {
@@ -2793,81 +2809,5 @@ async function handleSupervisorDecision(targetNrp, targetTimestamp, decision, ca
   } catch (err) {
     console.error("Gagal mengirim persetujuan supervisor:", err);
     showScanResult("❌ Gagal terhubung ke server", "error");
-  }
-}
-
-/**
- * Membuka Modal Pengajuan Unbind Perangkat untuk Karyawan
- */
-function openUnbindOverlay() {
-  const overlay = document.getElementById('unbindModalOverlay');
-  const nrpInput = document.getElementById('unbindReqNrp');
-  const localNRP = localStorage.getItem('attendance_registered_nrp') || (currentUserProfile ? currentUserProfile.nrp : '');
-  
-  if (nrpInput && localNRP) {
-    nrpInput.value = localNRP;
-  }
-  
-  if (overlay) overlay.style.display = 'flex';
-}
-
-/**
- * Menutup Modal Pengajuan Unbind Perangkat
- */
-function closeUnbindOverlay() {
-  const overlay = document.getElementById('unbindModalOverlay');
-  if (overlay) overlay.style.display = 'none';
-}
-
-/**
- * Mengirimkan Pengajuan Unbind Device dari PWA Karyawan ke Cloud / Google Sheets
- */
-async function submitUnbindRequest() {
-  const nrpInput = document.getElementById('unbindReqNrp');
-  const reasonSelect = document.getElementById('unbindReqReason');
-  const notesInput = document.getElementById('unbindReqNotes');
-
-  const nrp = nrpInput ? nrpInput.value.trim() : '';
-  const reason = reasonSelect ? reasonSelect.value : 'Ganti HP Baru';
-  const notes = notesInput ? notesInput.value.trim() : '';
-
-  if (!nrp) {
-    alert("⚠️ Mohon masukkan NRP Karyawan Anda.");
-    return;
-  }
-
-  const fullReason = reason + (notes ? ` (${notes})` : '');
-  const deviceId = getOrCreateDeviceId();
-
-  try {
-    showScanResult("⏳ Mengirimkan pengajuan unbind device ke HR Admin...", "info");
-    
-    const payload = {
-      action: "request_unbind_device",
-      nrp: nrp,
-      reason: fullReason,
-      device_id: deviceId
-    };
-
-    const response = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    });
-
-    const resData = await response.json();
-    const isSuccess = resData && (resData.status === 'success' || resData.code === 200);
-
-    if (isSuccess) {
-      closeUnbindOverlay();
-      showScanResult(`✅ Permintaan unbind perangkat untuk NRP ${nrp} berhasil dikirim ke HR Admin!`, "info");
-      alert(`✅ Permintaan unbind perangkat untuk NRP ${nrp} telah berhasil dikirim!\n\nHR Admin akan meninjau dan menyetujui pengajuan Anda di HR Portal.`);
-    } else {
-      const msg = resData ? (resData.message || resData.error || "Gagal mengirim pengajuan") : "Gagal mengirim pengajuan";
-      alert("❌ " + msg);
-    }
-  } catch (err) {
-    console.error("Gagal mengajukan unbind device:", err);
-    alert("⚠️ Terjadi kesalahan koneksi saat mengirim pengajuan unbind. Silakan coba lagi.");
   }
 }
