@@ -4,8 +4,7 @@
  */
 
 // Konfigurasi Endpoint Google Apps Script Web App Anda
-// Nilai __GAS_URL__ akan diinjeksi secara otomatis oleh GitHub Actions dari GitHub Secret (secrets.GAS_URL)
-const GAS_URL = "__GAS_URL__";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzW8DEIarp94S62cG5w5GA4gb6I4cdYB3f8TceJks7NaM3UOjuTLqa2kD0YaL7mEMoI/exec";
 
 // Global Variables
 let currentView = 'scan';
@@ -29,6 +28,51 @@ let livenessPassed = false;
 let faceVerified = false;
 let baselineSmileRatio = null;
 let isAttendanceSubmitted = false;
+
+// Keadaan Tugas Luar / Event
+let isTugasLuarMode = false;
+let tugasLuarEventName = "";
+
+function openTugasLuarModal() {
+  const overlay = document.getElementById('tugasLuarOverlay');
+  const input = document.getElementById('tugasLuarEventName');
+  if (input) input.value = '';
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function closeTugasLuarModal() {
+  const overlay = document.getElementById('tugasLuarOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function startTugasLuarScan() {
+  const input = document.getElementById('tugasLuarEventName');
+  const eventName = input ? input.value.trim() : '';
+  if (!eventName) {
+    alert("Harap masukkan Nama Event / Nama Kegiatan terlebih dahulu.");
+    return;
+  }
+
+  isTugasLuarMode = true;
+  tugasLuarEventName = eventName;
+  closeTugasLuarModal();
+
+  // Set simulated QR data for Tugas Luar Event
+  scannedQRData = {
+    outlet: "EVENT_" + eventName.toUpperCase().replace(/\s+/g, '_'),
+    totp_token: "TUGAS_LUAR_TOKEN",
+    timestamp: Math.floor(Date.now() / 1000)
+  };
+
+  // Stop QR Scanner and transition to Face Verification (Step 2)
+  stopQRScanner();
+  const step1 = document.getElementById('scanStep1');
+  const step2 = document.getElementById('scanStep2');
+  if (step1) step1.style.display = 'none';
+  if (step2) step2.style.display = 'block';
+
+  startScanCameraAndDetect();
+}
 
 /**
  * Helper untuk mendapatkan tanggal lokal (YYYY-MM-DD) sesuai zona waktu pengguna (bukan UTC)
@@ -146,7 +190,8 @@ function getOrCreateDeviceId() {
     return deviceId;
   }
 
-  // Buat Device ID Unik yang Mengombinasikan Hardware Fingerprint + UUID Persisten Browser
+  // Buat Device ID Unik yang KONSTAN berbasis Hardware Fingerprint HP (Bukan random UUID)
+  // ID ini akan SELALU SAMA pada HP yang sama meskipun localStorage / cache browser dibersihkan
   try {
     const fpData = [
       navigator.userAgent || '',
@@ -159,15 +204,10 @@ function getOrCreateDeviceId() {
     ].join('||');
 
     const hash = fnv1aHash(fpData);
-    const uniqueSuffix = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID().substring(0, 8).toUpperCase()
-      : Math.random().toString(36).substring(2, 10).toUpperCase();
-
-    deviceId = 'DEV-ID-' + hash + '-' + uniqueSuffix;
+    deviceId = 'DEV-FP-' + hash;
   } catch (e) {
-    // Fallback jika terjadi kesalahan saat fingerprinting
-    const fallbackUUID = Math.random().toString(36).substring(2, 10).toUpperCase();
-    deviceId = 'DEV-ID-' + Math.abs(fnv1aHash(navigator.userAgent || 'fallback')).toString(16).toUpperCase().padStart(8, '0') + '-' + fallbackUUID;
+    const fallbackHash = fnv1aHash(navigator.userAgent || 'fallback');
+    deviceId = 'DEV-FP-' + fallbackHash;
   }
 
   try {
@@ -608,6 +648,8 @@ function resetToScanStep1() {
   faceVerified = false;
   baselineSmileRatio = null;
   latestLiveDescriptor = null;
+  isTugasLuarMode = false;
+  tugasLuarEventName = "";
   const step1 = document.getElementById('scanStep1');
   const step2 = document.getElementById('scanStep2');
   const step3 = document.getElementById('scanStep3');
@@ -910,14 +952,15 @@ function openReasonOverlay(attendanceType, selectedWorkingHour = '') {
     if (title) title.innerText = "📋 Kategori / Alasan Terlambat";
     if (sub) sub.innerText = "Waktu masuk kerja melebihi jam mulai shift. Silakan pilih alasan jika ada (opsional):";
     options = [
-      { label: "⏰ Izin Terlambat", value: "Izin Terlambat", note: "Memerlukan Persetujuan Supervisor" },
-      { label: "📝 Lupa Absen", value: "Lupa Absen", note: "Memerlukan Persetujuan Supervisor" }
+      { label: "🛒 Belanja Kebutuhan Outlet", value: "Belanja Kebutuhan Outlet", note: "Memerlukan Persetujuan Area Manager (Tugas Belanja)" },
+      { label: "⏰ Izin Terlambat", value: "Izin Terlambat", note: "Memerlukan Persetujuan Area Manager" },
+      { label: "📝 Lupa Absen", value: "Lupa Absen", note: "Memerlukan Persetujuan Area Manager" }
     ];
   } else if (attendanceType === 'CLOCK_OUT') {
     if (title) title.innerText = "📋 Kategori / Alasan Pulang Awal";
     if (sub) sub.innerText = "Waktu pulang lebih awal dari jam selesai shift. Silakan pilih alasan jika ada (opsional):";
     options = [
-      { label: "🏃 Pulang Awal", value: "Pulang Awal", note: "Memerlukan Persetujuan Supervisor" }
+      { label: "🏃 Pulang Awal", value: "Pulang Awal", note: "Memerlukan Persetujuan Area Manager" }
     ];
   }
 
@@ -1384,23 +1427,48 @@ async function onQRScanSuccess(decodedText, decodedResult) {
         await stopAllCameras(); // stop penuh dilakukan di sini, di luar callback
         dbgLog('✅ Kamera dihentikan, membuka kamera depan...');
 
-        if (!localNRP) {
+        let activeNRP = localStorage.getItem('attendance_registered_nrp') || (currentUserProfile ? currentUserProfile.nrp : '');
+        
+        // Penanganan iOS Safari / Isolated Webview: Auto-restore NRP dari cloud jika localStorage kosong
+        if (!activeNRP && navigator.onLine) {
+          dbgLog('🔍 LocalStorage kosong, mencoba auto-identify NRP dari Device ID di cloud...');
+          try {
+            const devId = getOrCreateDeviceId();
+            const url = `${GAS_URL}?action=get_user_by_device_id&device_id=${encodeURIComponent(devId)}`;
+            const resp = await fetch(url);
+            const resData = await resp.json();
+            const userInfo = (resData && resData.data && typeof resData.data === 'object') ? resData.data : ((resData && resData.message && typeof resData.message === 'object') ? resData.message : resData);
+            if (resData && (resData.status === 'success' || resData.code === 200) && userInfo && userInfo.nrp) {
+              activeNRP = userInfo.nrp;
+              localStorage.setItem('attendance_registered_nrp', activeNRP);
+              if (userInfo.name) localStorage.setItem('attendance_user_name', userInfo.name);
+              if (userInfo.position) localStorage.setItem('attendance_user_position', userInfo.position);
+              if (userInfo.outlet) localStorage.setItem('attendance_user_outlet', userInfo.outlet);
+              currentUserProfile = userInfo;
+              dbgLog('✅ Auto-restore NRP berhasil: ' + activeNRP);
+            }
+          } catch(e) {
+            console.warn('[iOS Storage Fix] Auto-identify fallback error:', e);
+          }
+        }
+
+        if (!activeNRP) {
           openSyncOverlay();
         } else {
           // === CEK STATUS UNBIND SEBELUM LANJUT ===
-          dbgLog('🔍 Mengecek status unbind untuk NRP: ' + localNRP);
-          const unbindStatus = await checkUnbindStatusFromServer(localNRP);
+          dbgLog('🔍 Mengecek status unbind untuk NRP: ' + activeNRP);
+          const unbindStatus = await checkUnbindStatusFromServer(activeNRP);
           dbgLog('📋 Status unbind: ' + unbindStatus.status);
 
           if (unbindStatus.status === 'PENDING') {
             // Karyawan tidak bisa absen — tampilkan overlay tunggu HR
-            localStorage.setItem('attendance_pending_unbind_nrp', localNRP);
-            showUnbindPendingScreen(localNRP, unbindStatus.requested_at);
+            localStorage.setItem('attendance_pending_unbind_nrp', activeNRP);
+            showUnbindPendingScreen(activeNRP, unbindStatus.requested_at);
             isProcessingQRScan = false;
             return; // Stop di sini
           } else if (unbindStatus.status === 'APPROVED') {
             // Device sudah di-approve untuk diganti — arahkan ke registrasi ulang
-            await handleUnbindApproved(localNRP);
+            await handleUnbindApproved(activeNRP);
             isProcessingQRScan = false;
             return; // Stop di sini
           }
@@ -1833,6 +1901,8 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "",
       approvalTag = " [Supervisor Approval Required | " + activeReason + "]";
     }
 
+    let notesText = "Absen " + typeLabel + (selectedWorkingHour ? (" (" + selectedWorkingHour + ")") : "") + " via PWA" + approvalTag;
+
     const payload = {
       nrp: localNRP,
       outlet: scannedQRData.outlet || scannedQRData.outlet_id,
@@ -1847,14 +1917,22 @@ function submitAttendance(attendanceType = "CLOCK_IN", selectedWorkingHour = "",
       attendance_type: attendanceType,
       working_hour: selectedWorkingHour || "",
       device_id: getOrCreateDeviceId(),
-      notes: "Absen " + typeLabel + (selectedWorkingHour ? (" (" + selectedWorkingHour + ")") : "") + " via PWA" + approvalTag
+      notes: notesText
     };
+
+    if (isTugasLuarMode) {
+      payload.is_tugas_luar = true;
+      payload.tugas_luar_notes = tugasLuarEventName;
+      payload.notes = "Absen " + typeLabel + " (Tugas Luar Event: " + tugasLuarEventName + ") [Supervisor Approval Required | Tugas Luar: " + tugasLuarEventName + "]";
+    }
 
     if (navigator.onLine) {
       sendToGAS(payload);
     } else {
       enqueueOfflineRecord(payload);
     }
+    isTugasLuarMode = false;
+    tugasLuarEventName = "";
   }
 
   // Ambil lokasi GPS HP dengan validasi presisi tinggi
@@ -2002,6 +2080,18 @@ async function sendToGAS(payload) {
  */
 function closeBrowserTab() {
   console.log("Mencoba menutup tab browser...");
+  
+  // Sembunyikan & tutup semua modal overlay agar tidak menghalangi layar sukses
+  try {
+    if (typeof closeSyncOverlay === 'function') closeSyncOverlay();
+    if (typeof closeUnbindOverlay === 'function') closeUnbindOverlay();
+    document.querySelectorAll('.overlay').forEach(overlay => {
+      overlay.style.display = 'none';
+    });
+  } catch (e) {
+    console.warn("Gagal menyembunyikan overlay:", e);
+  }
+
   try {
     window.opener = null;
     window.open('', '_self', '');
@@ -2343,10 +2433,10 @@ async function uploadFaceEmbeddingToCloud(nrp, embedding, deviceId) {
       console.log("Membaca respon JSON dari GAS register_face:", e);
     }
 
-    if (resData) {
+    if (resData && typeof resData === "object") {
       return resData;
     }
-    return { status: "success", message: "Registrasi wajah berhasil disimpan." };
+    return { status: "error", message: "Respon server tidak valid atau gagal diproses. Silakan coba lagi." };
   } catch (err) {
     console.error("Gagal mengunggah data wajah ke cloud:", err);
     return { status: "error", message: "Gagal terhubung ke server cloud: " + err.toString() };
@@ -2892,12 +2982,29 @@ async function identifyDeviceUser() {
   const deviceId = getOrCreateDeviceId();
   const localNRP = localStorage.getItem('attendance_registered_nrp') || '';
 
-  // Render instan terlebih dahulu dari LocalStorage (jika ada) tanpa menunggu respon jaringan
   const banner = document.getElementById('userHeaderBanner');
   const nameEl = document.getElementById('userNameText');
   const nrpEl = document.getElementById('userNrpVal');
   const posEl = document.getElementById('userPosVal');
   const outletEl = document.getElementById('userOutletVal');
+
+  // Cek jika ada Sesi Area Manager tersimpan di LocalStorage
+  const amSessionStr = localStorage.getItem('attendance_am_session');
+  if (amSessionStr) {
+    try {
+      const amSess = JSON.parse(amSessionStr);
+      if (amSess && amSess.name) {
+        if (banner) banner.style.display = 'block';
+        if (nameEl) nameEl.innerText = `👋 Halo Area Manager, ${amSess.name}`;
+        if (nrpEl) nrpEl.innerText = 'Area Manager';
+        if (posEl) posEl.innerText = 'Area Manager';
+        if (outletEl) outletEl.innerText = amSess.outlet || 'Semua Area AM';
+
+        submitAmLogin(amSess.name, amSess.pin, true);
+        return;
+      }
+    } catch (e) {}
+  }
 
   if (localNRP) {
     const cachedName = localStorage.getItem('attendance_user_name') || localNRP;
@@ -3008,7 +3115,8 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       isSupervisorRole = true;
       cachedSupervisorPending = dataObj.pending_requests || resData.pending_requests || [];
 
-      const spvName = dataObj.supervisor_name || resData.supervisor_name || targetNRP;
+      const isAM = dataObj.is_area_manager || resData.is_area_manager || false;
+      const roleTitle = isAM ? "Area Manager" : "Supervisor";
 
       const banner = document.getElementById('supervisorBanner');
       const badge = document.getElementById('spvBadgeCount');
@@ -3016,15 +3124,19 @@ async function checkSupervisorRoleForNRP(targetNRP, showToast = false) {
       const spvHeaderBtn = document.getElementById('spvHeaderBtn');
       const spvHeaderBadge = document.getElementById('spvHeaderBadge');
 
-      if (spvHeaderBtn) spvHeaderBtn.style.display = 'inline-flex';
+      if (spvHeaderBtn) {
+        spvHeaderBtn.style.display = 'inline-flex';
+        const labelSpan = spvHeaderBtn.querySelector('span');
+        if (labelSpan) labelSpan.innerText = isAM ? "📋 Approval AM" : "📋 Approval";
+      }
       if (spvHeaderBadge) spvHeaderBadge.innerText = cachedSupervisorPending.length;
 
       if (banner) banner.style.display = 'none';
       if (badge) badge.innerText = cachedSupervisorPending.length + " Pengajuan";
-      if (spvText) spvText.innerText = "Panel Supervisor";
+      if (spvText) spvText.innerText = "Panel " + roleTitle;
 
       if (showToast) {
-        showScanResult("✅ Akses Supervisor Aktif (" + spvName + "): " + cachedSupervisorPending.length + " antrean", "info");
+        showScanResult("✅ Akses " + roleTitle + " Aktif (" + spvName + "): " + cachedSupervisorPending.length + " antrean", "info");
       }
       renderSupervisorPendingList(dataObj);
     } else {
@@ -3062,11 +3174,13 @@ function renderSupervisorPendingList(data) {
   if (!container) return;
 
   const requests = data.pending_requests || cachedSupervisorPending || [];
-  const spvName = data.supervisor_name || "Supervisor";
+  const isAM = data.is_area_manager || false;
+  const roleTitle = isAM ? "Area Manager" : "Supervisor";
+  const spvName = data.supervisor_name || roleTitle;
   const spvOutlet = data.supervisor_outlet || "Semua Area";
 
   if (sub) {
-    sub.innerText = `Supervisor: ${spvName} | Area: ${spvOutlet}`;
+    sub.innerText = `${roleTitle}: ${spvName} | Area: ${spvOutlet}`;
   }
 
   container.innerHTML = '';
@@ -3142,8 +3256,20 @@ function closeSupervisorOverlay() {
  * Mengirim Keputusan Supervisor (APPROVED / REJECTED) ke GAS Server Cloud
  */
 async function handleSupervisorDecision(targetNrp, targetTimestamp, decision, cardIndex) {
-  const localNRP = localStorage.getItem('attendance_registered_nrp');
-  if (!localNRP) return;
+  let supervisorNrp = localStorage.getItem('attendance_registered_nrp');
+  let amSessionName = '';
+  const amSessStr = localStorage.getItem('attendance_am_session');
+  if (amSessStr) {
+    try {
+      const parsedAm = JSON.parse(amSessStr);
+      if (parsedAm && parsedAm.name) {
+        amSessionName = parsedAm.name;
+        if (!supervisorNrp) supervisorNrp = parsedAm.name;
+      }
+    } catch(e){}
+  }
+
+  if (!supervisorNrp) return;
 
   const actionsDiv = document.getElementById('spvActions_' + cardIndex);
   if (actionsDiv) {
@@ -3152,7 +3278,7 @@ async function handleSupervisorDecision(targetNrp, targetTimestamp, decision, ca
 
   const payload = {
     action: "update_approval_status",
-    supervisor_nrp: localNRP,
+    supervisor_nrp: supervisorNrp,
     target_nrp: targetNrp,
     target_timestamp: targetTimestamp,
     decision: decision
@@ -3168,13 +3294,274 @@ async function handleSupervisorDecision(targetNrp, targetTimestamp, decision, ca
 
     if (resData && resData.status === "success") {
       showScanResult("✅ " + resData.message, "success");
-      await checkSupervisorRole(false);
+      if (amSessionName) {
+        await submitAmLogin(amSessionName, JSON.parse(amSessStr).pin, true);
+      } else {
+        await checkSupervisorRole(false);
+      }
     } else {
       showScanResult("❌ Gagal: " + (resData ? resData.message : "Terjadi kesalahan"), "error");
-      await checkSupervisorRole(false);
+      if (amSessionName) {
+        await submitAmLogin(amSessionName, JSON.parse(amSessStr).pin, true);
+      } else {
+        await checkSupervisorRole(false);
+      }
     }
   } catch (err) {
     console.error("Gagal mengirim persetujuan supervisor:", err);
     showScanResult("❌ Gagal terhubung ke server", "error");
+  }
+}
+
+/**
+ * Membuka Modal Login Area Manager & Mengambil daftar nama AM dari GAS
+ */
+async function openAmLoginModal() {
+  const overlay = document.getElementById('amLoginModalOverlay');
+  const select = document.getElementById('amSelectName');
+  if (overlay) overlay.style.display = 'flex';
+
+  if (select) {
+    select.innerHTML = '<option value="">⏳ Memuat daftar Area Manager...</option>';
+    try {
+      const response = await fetch(GAS_URL + "?action=get_am_list");
+      const resData = await response.json();
+      const amList = (resData && (resData.data || resData.message)) ? (resData.data || resData.message) : [];
+
+      if (Array.isArray(amList) && amList.length > 0) {
+        select.innerHTML = '<option value="">-- Pilih Area Manager --</option>';
+        amList.forEach(am => {
+          const opt = document.createElement('option');
+          opt.value = am;
+          opt.innerText = am;
+          select.appendChild(opt);
+        });
+      } else {
+        select.innerHTML = '<option value="">⚠️ Tidak ada data AM terdaftar di tab AM Baru</option>';
+      }
+    } catch (err) {
+      console.error("Gagal mengambil daftar AM:", err);
+      select.innerHTML = '<option value="">❌ Gagal terhubung ke server</option>';
+    }
+  }
+}
+
+function closeAmLoginModal() {
+  const overlay = document.getElementById('amLoginModalOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+/**
+ * Memproses Submit Login Area Manager (Nama + PIN)
+ */
+async function submitAmLogin(amNameOver = null, amPinOver = null, isAutoLogin = false) {
+  const selectEl = document.getElementById('amSelectName');
+  const pinEl = document.getElementById('amPinInput');
+
+  const amName = amNameOver || (selectEl ? selectEl.value : '');
+  const pin = amPinOver || (pinEl ? pinEl.value : '');
+
+  if (!amName) {
+    alert("Silakan pilih Nama Area Manager terlebih dahulu.");
+    return;
+  }
+  if (!pin) {
+    alert("Silakan masukkan PIN Passcode Area Manager.");
+    return;
+  }
+
+  if (!isAutoLogin) {
+    showScanResult("⏳ Verifikasi Login Area Manager...", "info");
+  }
+
+  try {
+    const url = GAS_URL + "?action=am_login&am_name=" + encodeURIComponent(amName) + "&pin=" + encodeURIComponent(pin);
+    const response = await fetch(url);
+    const resData = await response.json();
+
+    const dataObj = (resData && resData.data && typeof resData.data === 'object') ? resData.data : resData;
+    const isSuccess = resData && (resData.status === "success" || resData.code === 200);
+
+    if (isSuccess && dataObj) {
+      localStorage.setItem('attendance_am_session', JSON.stringify({
+        name: amName,
+        pin: pin,
+        outlet: dataObj.supervisor_outlet || '',
+        is_am: true,
+        login_time: Date.now()
+      }));
+
+      const banner = document.getElementById('userHeaderBanner');
+      const nameEl = document.getElementById('userNameText');
+      const nrpEl = document.getElementById('userNrpVal');
+      const posEl = document.getElementById('userPosVal');
+      const outletEl = document.getElementById('userOutletVal');
+
+      if (banner) banner.style.display = 'block';
+      if (nameEl) nameEl.innerText = `👋 Halo Area Manager, ${amName}`;
+      if (nrpEl) nrpEl.innerText = 'Area Manager';
+      if (posEl) posEl.innerText = 'Area Manager';
+      if (outletEl) outletEl.innerText = dataObj.supervisor_outlet || 'Semua Area AM';
+
+      const spvHeaderBtn = document.getElementById('spvHeaderBtn');
+      const spvHeaderBadge = document.getElementById('spvHeaderBadge');
+      const changePinBtn = document.getElementById('amChangePinBtn');
+      if (spvHeaderBtn) {
+        spvHeaderBtn.style.display = 'inline-flex';
+        const labelSpan = spvHeaderBtn.querySelector('span');
+        if (labelSpan) labelSpan.innerText = "📋 Approval AM";
+      }
+      if (spvHeaderBadge) {
+        spvHeaderBadge.innerText = (dataObj.pending_requests || []).length;
+      }
+      if (changePinBtn) {
+        changePinBtn.style.display = 'inline-block';
+      }
+
+      cachedSupervisorPending = dataObj.pending_requests || [];
+      renderSupervisorPendingList(dataObj);
+
+      closeAmLoginModal();
+
+      const isDefaultPin = (dataObj.is_default_pin === true) || (pin === "1234");
+      if (isDefaultPin) {
+        openChangePinModal(true);
+        alert("⚠️ PERINGATAN KEAMANAN: Anda masih menggunakan PIN Default ('1234'). Anda WAJIB mengganti PIN baru terlebih dahulu sebelum dapat mengakses persetujuan.");
+        return;
+      }
+
+      if (!isAutoLogin) {
+        showScanResult("✅ Berhasil Login sebagai Area Manager (" + amName + ")", "success");
+        openSupervisorOverlay();
+      }
+    } else {
+      const errMsg = resData ? (resData.message || resData.error || "Login Gagal") : "Login Gagal";
+      alert("❌ " + errMsg);
+    }
+  } catch (err) {
+    console.error("Error submit AM login:", err);
+    alert("❌ Gagal terhubung ke server untuk verifikasi Login AM.");
+  }
+}
+
+let isForcedPinChangeActive = false;
+
+function openChangePinModal(isForced = false) {
+  isForcedPinChangeActive = isForced;
+  const overlay = document.getElementById('changePinModalOverlay');
+  const cancelBtn = document.getElementById('cancelChangePinBtn');
+  const subText = document.getElementById('changePinSubText');
+  const oldPinInput = document.getElementById('oldPinInput');
+
+  if (oldPinInput && isForced) {
+    oldPinInput.value = "1234";
+  }
+
+  if (cancelBtn) {
+    cancelBtn.style.display = isForced ? 'none' : 'block';
+  }
+  if (subText) {
+    subText.innerHTML = isForced
+      ? "<strong style='color: #ef4444;'>⚠️ PERINGATAN KEAMANAN:</strong> Anda menggunakan PIN Default ('1234'). Silakan buat PIN baru (minimal 4 digit) untuk dapat melanjutkan."
+      : "Masukkan PIN lama Anda dan tentukan PIN baru (minimal 4 digit).";
+  }
+
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function closeChangePinModal() {
+  if (isForcedPinChangeActive) {
+    alert("⚠️ Anda wajib mengubah PIN default terlebih dahulu sebelum dapat melanjutkan.");
+    return;
+  }
+  const overlay = document.getElementById('changePinModalOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+/**
+ * Memproses Perubahan PIN Area Manager
+ */
+async function submitChangeAmPin() {
+  const amSessionStr = localStorage.getItem('attendance_am_session');
+  if (!amSessionStr) {
+    alert("Sesi Area Manager tidak ditemukan. Silakan login ulang terlebih dahulu.");
+    return;
+  }
+  let amName = '';
+  try {
+    const parsed = JSON.parse(amSessionStr);
+    amName = parsed.name || '';
+  } catch(e){}
+
+  if (!amName) {
+    alert("Sesi Area Manager tidak valid.");
+    return;
+  }
+
+  const oldPin = (document.getElementById('oldPinInput') ? document.getElementById('oldPinInput').value : '').trim();
+  const newPin = (document.getElementById('newPinInput') ? document.getElementById('newPinInput').value : '').trim();
+  const confirmPin = (document.getElementById('confirmNewPinInput') ? document.getElementById('confirmNewPinInput').value : '').trim();
+
+  if (!oldPin) {
+    alert("Silakan masukkan PIN Lama Anda.");
+    return;
+  }
+  if (!newPin || newPin.length < 4) {
+    alert("PIN Baru minimal 4 digit.");
+    return;
+  }
+  if (newPin === "1234") {
+    alert("❌ PIN Baru tidak boleh menggunakan PIN default '1234'. Silakan buat kombinasi PIN unik yang baru.");
+    return;
+  }
+  if (newPin !== confirmPin) {
+    alert("Konfirmasi PIN Baru tidak cocok!");
+    return;
+  }
+
+  showScanResult("⏳ Memperbarui PIN Area Manager...", "info");
+
+  try {
+    const payload = {
+      action: "change_am_pin",
+      am_name: amName,
+      old_pin: oldPin,
+      new_pin: newPin
+    };
+
+    const response = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    });
+    const resData = await response.json();
+
+    if (resData && (resData.status === "success" || resData.code === 200)) {
+      localStorage.setItem('attendance_am_session', JSON.stringify({
+        name: amName,
+        pin: newPin,
+        is_am: true,
+        login_time: Date.now()
+      }));
+
+      const wasForced = isForcedPinChangeActive;
+      isForcedPinChangeActive = false;
+      
+      const overlay = document.getElementById('changePinModalOverlay');
+      if (overlay) overlay.style.display = 'none';
+
+      alert("✅ PIN Area Manager berhasil diperbarui!");
+      showScanResult("✅ PIN Area Manager berhasil diperbarui!", "success");
+
+      if (wasForced) {
+        openSupervisorOverlay();
+      }
+    } else {
+      const errMsg = resData ? (resData.message || resData.error || "Gagal mengubah PIN") : "Gagal mengubah PIN";
+      alert("❌ " + errMsg);
+    }
+  } catch (err) {
+    console.error("Error changing AM PIN:", err);
+    alert("❌ Gagal terhubung ke server untuk mengubah PIN.");
   }
 }
